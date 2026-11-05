@@ -36,6 +36,11 @@ uv run python manage.py qcluster
 ```
 Sin `qcluster` los documentos se quedan en «Pendiente».
 
+## Modelo de lenguaje (Ollama)
+Con [Ollama](https://ollama.com) instalado y en marcha, indica en `.env` el modelo a usar
+(el nombre que muestra `ollama list`), por ejemplo `LLM_MODEL=qwen3:8b`, y reinicia la aplicación.
+En **Configuración → Probar conexión** puedes comprobar que funciona.
+
 ## Pruebas y calidad
 ```bash
 uv run pytest

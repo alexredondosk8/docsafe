@@ -159,10 +159,33 @@ Paquete `apps/anonymization/` (Python puro):
   (tipo, descripción, etiqueta, apariciones — **sin valores reales**); el mapa se borra al terminar.
   La UI muestra la tabla "Reemplazos realizados" y un aviso de anonimización parcial mientras
   `ANONYMIZATION_LAYERS` no incluya "llm".
-- Limitaciones conocidas (para el LLM en Fase 6): nombres/empresas/direcciones en texto libre sin
+- Limitaciones conocidas (para el LLM en Fase 6) — ver abajo: nombres/empresas/direcciones en texto libre sin
   contexto; variantes de un mismo nombre ("Juan Pérez" vs "Juan Carlos Pérez Gómez") reciben etiquetas
   distintas; ciudades no se anonimizan; una celda de la columna "Nombre" que no es un nombre se
   reemplaza igual (se prefiere anonimizar de más).
+
+### Cliente LLM y Configuración (Fase 5)
+- Librería `openai` 3.46 (usa `httpx2`, no `httpx`). `apps/llm/client.py`:
+  `LLMConfig.from_settings()` (solo `.env`: LLM_BASE_URL, LLM_MODEL, LLM_API_KEY, LLM_TIMEOUT),
+  interfaz `LLMProvider` (Protocol) e implementación `OpenAICompatibleProvider`; `get_provider()` es
+  el único punto de entrada (un solo modelo, sin selección desde la web).
+- `test_connection()`: valida config → `GET /models` (si el servidor no lo publica, se omite) → comprueba
+  que el modelo exista → chat mínimo sin datos del usuario ("Responde únicamente: OK", 16 tokens).
+- `chat_json(system, user)`: `temperature=0`, `response_format=json_object`; `parse_json_object` tolera
+  `<think>…</think>` y cercos ```json. Errores ⇒ `LLMError` con mensaje en español.
+- Errores traducidos (conexión — con pista "¿Está Ollama en marcha?" si es local —, timeout, 401/403,
+  404, 429, HTTP n). `_sanitize` quita la clave de cualquier mensaje; logs solo con el tipo de excepción.
+  Loggers `openai`, `httpx(2)`, `httpcore(2)` en WARNING.
+- **Local** = localhost, `*.localhost`, loopback (127.x, ::1). Una IP de la red local (192.168…) o 0.0.0.0
+  cuenta como **remoto** (los datos salen del PC). `mask_url` oculta usuario:clave@ de la URL.
+- Página `/configuracion/` de **solo lectura** (URL, modelo, local/remoto, clave «Configurada (oculta)»,
+  timeout, errores de configuración) + botón «Probar conexión» → `POST /configuracion/probar/` (JSON,
+  CSRF, `no-store`; nunca incluye la clave).
+- Aviso de privacidad (`templates/_llm_privacy_warning.html`, context processor `llm_privacy`) en la
+  subida y en Configuración cuando el LLM es remoto.
+- Pruebas: servidor simulado `tests/llm_fakes.py` con `httpx2.MockTransport` (ejecuta el cliente real
+  sin red). Verificado contra Ollama local real (qwen3:4b): ~1–10 s por respuesta; los modelos qwen3
+  "piensan" antes de responder (considerar en la Fase 6).
 
 ## Arquitectura (carpetas)
 ```
@@ -193,7 +216,7 @@ uv run ruff check . ; uv run ruff format .
 2. Conversión determinista a Markdown (PDF, DOCX, XLSX) con archivos de ejemplo. ✅
 3. Segundo plano (django-q2), estados y progreso en la UI. ✅
 4. Anonimización determinista (regex) con pruebas. ✅
-5. Cliente LLM, página de Configuración, probar conexión, aviso de privacidad.
+5. Cliente LLM, página de Configuración, probar conexión, aviso de privacidad. ✅
 6. Anonimización con LLM, fragmentación, etiquetas consistentes, pantalla de revisión.
 7. Endurecimiento, pruebas de extremo a extremo, README completo (Windows/Linux + Ollama).
 

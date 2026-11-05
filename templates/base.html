@@ -9,15 +9,18 @@
 </head>
 <body class="bg-body-tertiary">
   <nav class="navbar navbar-expand bg-dark" data-bs-theme="dark">
-    <div class="container">
+    <div class="container flex-wrap">
       <a class="navbar-brand fw-semibold" href="{% url 'documents:upload' %}">DocSafe</a>
       {% with url_name=request.resolver_match.url_name %}
-      <ul class="navbar-nav me-auto">
+      <ul class="navbar-nav me-auto flex-wrap">
         <li class="nav-item">
           <a class="nav-link{% if url_name == 'upload' %} active{% endif %}" href="{% url 'documents:upload' %}">Subir documento</a>
         </li>
         <li class="nav-item">
           <a class="nav-link{% if url_name == 'history' %} active{% endif %}" href="{% url 'documents:history' %}">Historial</a>
+        </li>
+        <li class="nav-item">
+          <a class="nav-link{% if url_name == 'settings' %} active{% endif %}" href="{% url 'llm:settings' %}">Configuración</a>
         </li>
       </ul>
       {% endwith %}

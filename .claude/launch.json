@@ -7,6 +7,14 @@
       "runtimeArgs": ["run", "python", "manage.py", "iniciar", "--puerto", "8010"],
       "port": 8010,
       "autoPort": false
+    },
+    {
+      "name": "docsafe-web",
+      "runtimeExecutable": "uv",
+      "runtimeArgs": ["run", "python", "manage.py", "runserver", "127.0.0.1:8010", "--noreload"],
+      "port": 8010,
+      "autoPort": false,
+      "env": { "LLM_MODEL": "qwen3:4b" }
     }
   ]
 }

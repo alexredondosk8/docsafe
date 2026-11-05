@@ -1,0 +1,8 @@
+{% if llm_is_remote %}
+<div class="alert alert-danger" role="alert" id="llm-privacy-warning">
+  <strong>Aviso de privacidad:</strong> el modelo de lenguaje configurado está en un servicio
+  externo (<code>{{ llm_host }}</code>), no en este equipo. Al usar la detección con IA, el
+  contenido de tus documentos <strong>se enviará a ese servicio</strong>. Para mantenerlo todo
+  en tu PC, usa un modelo local (por ejemplo, Ollama en <code>http://localhost:11434/v1</code>).
+</div>
+{% endif %}

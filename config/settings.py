@@ -78,6 +78,7 @@ TEMPLATES = [
             "context_processors": [
                 "django.template.context_processors.request",
                 "django.contrib.messages.context_processors.messages",
+                "apps.llm.context_processors.llm_privacy",
             ],
         },
     },
@@ -187,4 +188,9 @@ LOGGING = {
         },
     },
     "root": {"handlers": ["console", "file"], "level": env("DOCSAFE_LOG_LEVEL", default="INFO")},
+    # Las librerías HTTP/LLM en modo detallado podrían registrar peticiones con contenido.
+    "loggers": {
+        name: {"level": "WARNING"}
+        for name in ("openai", "httpx", "httpx2", "httpcore", "httpcore2")
+    },
 }
