@@ -72,6 +72,40 @@ nombre de empresa, NIT. Se reemplazan por etiquetas consistentes dentro del docu
     El tamaño se valida tras recibir el archivo; cortar la subida antes queda para la Fase 7.
 18. Rutas: `/` subir, `/historial/`, `/conversiones/<uuid>/`, `/conversiones/<uuid>/eliminar/` (POST).
 
+### Conversión a Markdown (Fase 2) — evaluación y elección
+Se comparó markitdown 0.1.9 con pymupdf4llm 2.1 / python-docx / openpyxl sobre los mismos
+documentos de ejemplo (`tests/fixtures/`, datos ficticios):
+
+| Formato | Elegido | Por qué no markitdown |
+|---|---|---|
+| PDF | **pymupdf4llm** (modo diseño, `use_ocr=False`) | markitdown (pdfminer) da texto plano sin títulos ni tablas, corta líneas a mitad de frase y deja ligaduras ("ﬁ") que rompen las regex. pymupdf4llm reconoce títulos, listas y tablas con bordes y une las líneas en párrafos (un nombre no queda partido). |
+| DOCX | **conversor propio con python-docx** | mammoth (dentro de markitdown) omite encabezados/pies, crea una fila vacía como cabecera de tabla y no escapa `\|` (rompe tablas). |
+| XLSX | **conversor propio con openpyxl** | usa pandas: `NaN`, `NaT`, `5000000.0`, no escapa `\|`. |
+
+Además markitdown arrastra `magika` (modelo de IA para detectar tipos) y pandas.
+
+Detalles:
+- `apps/conversion/` es Python puro. Entrada: `convert(path, file_type) -> ConversionResult(markdown, warnings)`;
+  errores como `ConversionError` con mensaje en español sin contenido del documento.
+- `normalize()` aplica NFKC (ligaduras, espacios duros), saltos `\n`, máx. una línea en blanco,
+  línea en blanco tras títulos. Común a los tres formatos para que la anonimización sea uniforme.
+- **PDF**: rechaza protegidos con contraseña y escaneados (ninguna página con ≥ 10 caracteres de texto);
+  en PDF mixtos omite páginas sin texto y avisa. Quita la negrita redundante en títulos.
+  Licencia **AGPL** (PyMuPDF): válida para uso personal; revisar si algún día se distribuye.
+  Trae onnxruntime y modelos de diseño **locales** (~90 MB, sin descargas en ejecución).
+  La primera conversión de PDF tarda ~1 s más (carga del modelo).
+- **DOCX**: orden original; títulos (Heading/Título N, Title, outlineLvl), negrita/cursiva, listas con
+  viñeta/numeradas y anidadas (numbering.xml), tablas (primera fila = cabecera, celdas combinadas
+  sin duplicar, tablas anidadas aplanadas), enlaces (mailto/tel como texto), controles de contenido.
+  Encabezados arriba y pies abajo, separados con `---` (sin duplicados). No incluye: imágenes,
+  cuadros de texto, notas al pie, comentarios, control de cambios.
+- **XLSX**: `## Hoja: <nombre>` por hoja (ocultas incluidas y marcadas), primera fila = cabecera,
+  sin filas/columnas vacías, fechas ISO, enteros sin `.0`, porcentajes según formato, booleanos Sí/No.
+  Usa los valores de fórmula guardados por Excel; si el archivo no los tiene (p. ej. generado por
+  código), la celda queda vacía.
+- Herramienta de terminal (sin anonimizar): `uv run python -m apps.conversion archivo [-o salida.md]`.
+- Documentos de ejemplo: `uv run python -m tests.fixtures.generate` (regenera `tests/fixtures/`).
+
 ## Arquitectura (carpetas)
 ```
 config/              Proyecto Django (settings, settings_test, urls, wsgi, asgi)
@@ -97,7 +131,7 @@ uv run ruff check . ; uv run ruff format .
 ## Fases
 0. Estructura, entorno, settings, .env.example, ruff, pytest, CLAUDE.md, README. ✅
 1. Subida y validación (1 archivo, ≤ 20 MB, extensión + MIME) + modelo + historial. ✅
-2. Conversión determinista a Markdown (PDF, DOCX, XLSX) con archivos de ejemplo.
+2. Conversión determinista a Markdown (PDF, DOCX, XLSX) con archivos de ejemplo. ✅
 3. Segundo plano (django-q2), estados y progreso en la UI.
 4. Anonimización determinista (regex) con pruebas.
 5. Cliente LLM, página de Configuración, probar conexión, aviso de privacidad.
@@ -107,5 +141,4 @@ uv run ruff check . ; uv run ruff format .
 ## Preguntas abiertas
 - Pantalla de revisión (Fase 6): ¿solo confirmar/cancelar o también desmarcar/añadir
   reemplazos? ¿Se muestra el valor original de forma temporal hasta confirmar?
-- Conversión PDF (Fase 2): `pymupdf4llm` es AGPL; aceptable para uso personal, revisar
-  si se distribuye. Evaluar frente a `markitdown`.
+- (Resuelta en Fase 2) PDF con pymupdf4llm (AGPL, aceptable para uso personal).
