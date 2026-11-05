@@ -65,6 +65,8 @@ class Conversion(models.Model):
     error_message = models.CharField("mensaje de error", max_length=500, blank=True)
     # Avisos para el usuario (p. ej. páginas omitidas). Nunca contenido del documento.
     warnings = models.JSONField("avisos", default=list, blank=True)
+    # Resumen de reemplazos: [{"type", "description", "label", "count"}]. Sin valores reales.
+    replacements = models.JSONField("reemplazos", default=list, blank=True)
     # Resultado final ya anonimizado (Fases 2-6).
     markdown = models.TextField("Markdown anonimizado", blank=True)
     created_at = models.DateTimeField("creado", auto_now_add=True)

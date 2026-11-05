@@ -142,6 +142,24 @@ MAX_UPLOAD_SIZE_MB = env.int("DOCSAFE_MAX_UPLOAD_MB", default=20)
 # temporal del sistema), para que todo quede bajo control de la aplicación.
 FILE_UPLOAD_TEMP_DIR = str(UPLOADS_DIR)
 
+# --- Anonimización por reglas (Fase 4) ---------------------------------------------------
+# Por defecto solo se anonimizan fechas de nacimiento; True reemplaza TODAS las fechas.
+ANONYMIZE_ALL_DATES = env.bool("DOCSAFE_ANONIMIZAR_TODAS_LAS_FECHAS", default=False)
+# Tipos de dato que NO se anonimizan (separados por comas), p. ej. "EDAD,CUENTA".
+ANONYMIZATION_DISABLED_TYPES = [
+    t.strip().upper() for t in env.list("DOCSAFE_REGLAS_DESACTIVADAS", default=[]) if t.strip()
+]
+_VALID_TYPES = {
+    "NOMBRE", "CEDULA", "PASAPORTE", "NIT", "EMPRESA", "CORREO", "TELEFONO", "DIRECCION",
+    "FECHA_NACIMIENTO", "EDAD", "CONTRATO", "CUENTA", "FECHA",
+}  # fmt: skip
+_unknown = set(ANONYMIZATION_DISABLED_TYPES) - _VALID_TYPES
+if _unknown:
+    raise ImproperlyConfigured(
+        f"DOCSAFE_REGLAS_DESACTIVADAS contiene tipos desconocidos: {', '.join(sorted(_unknown))}. "
+        f"Válidos: {', '.join(sorted(_VALID_TYPES))}."
+    )
+
 # --- LLM (se usa desde la Fase 5) -------------------------------------------------------
 # La clave nunca se envía al navegador ni se muestra en ninguna vista.
 LLM_BASE_URL = env("LLM_BASE_URL", default="http://localhost:11434/v1")

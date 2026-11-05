@@ -56,7 +56,7 @@ def detail(request, pk):
     return render(
         request,
         "documents/detail.html",
-        {"conversion": conversion, "anonymization_enabled": pipeline.ANONYMIZATION_ENABLED},
+        {"conversion": conversion, "llm_enabled": "llm" in pipeline.ANONYMIZATION_LAYERS},
     )
 
 

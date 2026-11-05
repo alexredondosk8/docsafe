@@ -34,13 +34,13 @@ def test_sin_admin_ni_autenticacion():
     assert "django.contrib.auth" not in settings.INSTALLED_APPS
 
 
-def test_falla_si_no_hay_clave_secreta(tmp_path):
-    """Sin DJANGO_SECRET_KEY la aplicación no debe arrancar."""
+def _import_settings(tmp_path, **extra_env):
     env = {k: v for k, v in os.environ.items() if k != "DJANGO_SECRET_KEY"}
     env["DOCSAFE_VAR_DIR"] = str(tmp_path)
     env["DOCSAFE_ENV_FILE"] = str(tmp_path / "no-existe.env")
     env["PYTHONPATH"] = str(BASE_DIR)
-    result = subprocess.run(  # noqa: S603
+    env.update(extra_env)
+    return subprocess.run(  # noqa: S603
         [sys.executable, "-c", "import config.settings"],
         cwd=tmp_path,
         env=env,
@@ -48,5 +48,23 @@ def test_falla_si_no_hay_clave_secreta(tmp_path):
         text=True,
         check=False,
     )
+
+
+def test_falla_si_no_hay_clave_secreta(tmp_path):
+    """Sin DJANGO_SECRET_KEY la aplicación no debe arrancar."""
+    result = _import_settings(tmp_path)
     assert result.returncode != 0
     assert "DJANGO_SECRET_KEY" in result.stderr
+
+
+def test_falla_con_tipo_de_regla_desconocido(tmp_path):
+    result = _import_settings(
+        tmp_path, DJANGO_SECRET_KEY="x", DOCSAFE_REGLAS_DESACTIVADAS="CORREO,INVENTADO"
+    )
+    assert result.returncode != 0
+    assert "INVENTADO" in result.stderr
+
+
+def test_anonimizacion_por_defecto():
+    assert settings.ANONYMIZE_ALL_DATES is False
+    assert settings.ANONYMIZATION_DISABLED_TYPES == []

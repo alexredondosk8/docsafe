@@ -4,7 +4,7 @@ Aplicación web **local** (corre en tu PC, sin nube) que convierte documentos PD
 y Excel (.xlsx) a Markdown y elimina los datos personales y confidenciales, reemplazándolos
 por etiquetas como `[NOMBRE_1]`, `[CEDULA_1]` o `[EMPRESA_1]`.
 
-> Estado: **MVP en construcción** (Fase 3: conversión en segundo plano; anonimización pendiente).
+> Estado: **MVP en construcción** (Fase 4: anonimización por reglas; la detección con IA llega en la Fase 6).
 > La guía completa de instalación en Windows y Linux, con Ollama, llega en la Fase 7.
 
 ## Requisitos

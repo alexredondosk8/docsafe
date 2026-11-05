@@ -127,6 +127,42 @@ Detalles:
 - Campo `Conversion.warnings` (JSON, lista de avisos sin contenido).
 - `manage.py iniciar [--puerto]`: migra, reencola, lanza `qcluster` como subproceso y `runserver`
   en 127.0.0.1 sin recarga; al salir detiene el worker. Desarrollo: runserver + qcluster en 2 terminales.
+- `iniciar` se niega a arrancar si ya hay un `qcluster` de este proyecto en marcha (psutil): dos
+  procesadores comparten la cola ORM y uno con código antiguo procesaría documentos con reglas
+  viejas (ocurrió en la verificación de la Fase 4).
+
+### Anonimización por reglas (Fase 4)
+Paquete `apps/anonymization/` (Python puro):
+- `entities.py`: `EntityType` (NOMBRE, CEDULA, PASAPORTE, NIT, EMPRESA, CORREO, TELEFONO, DIRECCION,
+  FECHA_NACIMIENTO, EDAD, CONTRATO, CUENTA, FECHA), `Span`, `EntityMap` (etiquetas `[TIPO_n]`
+  numeradas por tipo en orden de aparición; misma entidad ⇒ misma etiqueta según `normalize_value`:
+  dígitos para documentos/teléfonos, NIT sin DV, correo en minúsculas, texto sin tildes ni mayúsculas,
+  empresa sin puntos/espacios). `clear()` borra los valores reales.
+- `rules.py`: reglas regex con contexto colombiano (C.C./CC/C.E./T.I./NUIP, NIT con o sin DV, celulares 3xx,
+  fijos 60x, internacionales +, palabra clave "Tel/Cel", cuentas de ahorros/corrientes, "nacido el" + fecha,
+  edad con "edad"/"años de edad"/tras nacimiento, nomenclatura de direcciones (Calle, Cra., Av. Calle,
+  Diagonal… # n-n + complementos), empresas por sufijo societario (S.A.S., S.A., Ltda., E.U., S. en C.…)
+  o seguidas de "identificada con NIT", nombres solo con contexto (Sr./Dra./señora, "representada por",
+  "…, identificado con C.C.", "Firma:/Nombre:"). Abreviaturas cortas sensibles a mayúsculas.
+  `single_line()` convierte `\s` en `[ \t]` al compilar: **ninguna coincidencia cruza saltos de línea**.
+- `tables.py`: tablas Markdown. Columna con cabecera conocida (Nombre, Cédula, Correo, Teléfono, Dirección,
+  Fecha de nacimiento, Edad, NIT, Contrato, Empresa/Razón social, Cuenta, Pasaporte) ⇒ todas sus celdas.
+  Tabla clave-valor (2 columnas, alguna fila del cuerpo empieza con etiqueta conocida) ⇒ segunda celda.
+  Respeta `\|` escapado; ignora celdas vacías, "-", "N/A".
+- `anonymizer.py`: detectores → filtro de tipos desactivados → **propagación** (cada valor detectado se busca
+  en todo el texto; numéricos con separadores flexibles; EDAD y FECHA no se propagan; mín. 4 caracteres /
+  5 dígitos) → solapamientos (mayor prioridad, luego más largo) → reemplazo. `Anonymizer` acepta
+  `extra_detectors` (LLM en Fase 6) y un `EntityMap` compartido entre fragmentos.
+- Configuración `.env`: `DOCSAFE_ANONIMIZAR_TODAS_LAS_FECHAS` (False por defecto, decisión del usuario:
+  solo fechas de nacimiento) y `DOCSAFE_REGLAS_DESACTIVADAS` (lista de tipos; tipo desconocido ⇒ error al arrancar).
+- Integración (`pipeline.anonymize`): guarda el Markdown anonimizado y `Conversion.replacements`
+  (tipo, descripción, etiqueta, apariciones — **sin valores reales**); el mapa se borra al terminar.
+  La UI muestra la tabla "Reemplazos realizados" y un aviso de anonimización parcial mientras
+  `ANONYMIZATION_LAYERS` no incluya "llm".
+- Limitaciones conocidas (para el LLM en Fase 6): nombres/empresas/direcciones en texto libre sin
+  contexto; variantes de un mismo nombre ("Juan Pérez" vs "Juan Carlos Pérez Gómez") reciben etiquetas
+  distintas; ciudades no se anonimizan; una celda de la columna "Nombre" que no es un nombre se
+  reemplaza igual (se prefiere anonimizar de más).
 
 ## Arquitectura (carpetas)
 ```
@@ -156,7 +192,7 @@ uv run ruff check . ; uv run ruff format .
 1. Subida y validación (1 archivo, ≤ 20 MB, extensión + MIME) + modelo + historial. ✅
 2. Conversión determinista a Markdown (PDF, DOCX, XLSX) con archivos de ejemplo. ✅
 3. Segundo plano (django-q2), estados y progreso en la UI. ✅
-4. Anonimización determinista (regex) con pruebas.
+4. Anonimización determinista (regex) con pruebas. ✅
 5. Cliente LLM, página de Configuración, probar conexión, aviso de privacidad.
 6. Anonimización con LLM, fragmentación, etiquetas consistentes, pantalla de revisión.
 7. Endurecimiento, pruebas de extremo a extremo, README completo (Windows/Linux + Ollama).

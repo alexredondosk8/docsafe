@@ -1,7 +1,7 @@
 """Pruebas del comando `manage.py iniciar`."""
 
 import pytest
-from django.core.management import call_command
+from django.core.management import CommandError, call_command
 
 from apps.documents.management.commands import iniciar
 
@@ -34,6 +34,7 @@ def fake(monkeypatch):
     monkeypatch.setattr(iniciar.subprocess, "Popen", fake_popen)
     monkeypatch.setattr(iniciar, "call_command", fake_call_command)
     monkeypatch.setattr(iniciar, "requeue_unfinished", lambda: 2)
+    monkeypatch.setattr(iniciar, "find_running_workers", lambda base: [])
     return calls
 
 
@@ -52,3 +53,36 @@ def test_inicia_procesador_y_servidor_local(fake, capsys):
 def test_puerto_personalizado(fake):
     call_command("iniciar", "--puerto", "8050")
     assert fake["commands"][1][1] == ("127.0.0.1:8050",)
+
+
+def test_no_inicia_si_ya_hay_un_procesador(fake, monkeypatch):
+    monkeypatch.setattr(iniciar, "find_running_workers", lambda base: [1234])
+    with pytest.raises(CommandError, match="Ya hay un procesador de DocSafe en marcha"):
+        call_command("iniciar")
+    assert fake["commands"] == []
+    assert fake["process"] is None
+
+
+class FakeProc:
+    def __init__(self, pid, cmdline, cwd):
+        self.info = {"pid": pid, "cmdline": cmdline}
+        self._cwd = cwd
+
+    def cwd(self):
+        return self._cwd
+
+
+def test_detecta_procesadores_solo_de_este_proyecto(monkeypatch, tmp_path):
+    project = tmp_path / "docsafe"
+    other = tmp_path / "otro"
+    project.mkdir()
+    other.mkdir()
+    procs = [
+        FakeProc(1, ["python", str(project / "manage.py"), "qcluster"], str(tmp_path)),
+        FakeProc(2, ["python", "manage.py", "qcluster"], str(project)),
+        FakeProc(3, ["python", str(other / "manage.py"), "qcluster"], str(other)),
+        FakeProc(4, ["python", "manage.py", "runserver"], str(project)),
+        FakeProc(5, None, str(project)),
+    ]
+    monkeypatch.setattr(iniciar.psutil, "process_iter", lambda attrs: procs)
+    assert iniciar.find_running_workers(project) == [1, 2]

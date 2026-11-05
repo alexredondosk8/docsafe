@@ -218,14 +218,66 @@ def test_detalle_activo_consulta_estado(client):
     assert reverse("documents:status", args=[conversion.id]) in content
 
 
-def test_detalle_completado_muestra_vista_previa_y_aviso(client, upload):
+def test_detalle_completado_muestra_vista_previa_reemplazos_y_aviso(client, upload):
     conversion = upload("contrato.docx")
     content = client.get(reverse("documents:detail", args=[conversion.id])).content.decode()
 
     assert "Vista previa del Markdown" in content
-    assert "# Contrato de prestación de servicios" in content
-    assert "contiene los datos originales" in content  # aviso mientras no hay anonimización
+    assert "# Contrato de prestación de servicios No. [CONTRATO_1]" in content
+    assert "Anonimización parcial (solo reglas)" in content  # hasta la Fase 6 (LLM)
+    assert "Reemplazos realizados" in content
+    assert "<code>[CEDULA_1]</code>" in content
     assert "js/status.js" not in content
+    for value in ["Juan Carlos", "1.020.304.050", "juan.perez@ejemplo.com", "900.123.456"]:
+        assert value not in content
+
+
+# --- Anonimización en el flujo ----------------------------------------------------------
+
+
+def test_markdown_guardado_esta_anonimizado(upload):
+    conversion = upload("contrato.docx")
+    for value in ["Soluciones Andinas", "María Fernanda", "52.345.678", "+57 310 555 1234"]:
+        assert value not in conversion.markdown
+    assert "[EMPRESA_1]" in conversion.markdown
+
+
+def test_resumen_de_reemplazos_sin_valores_reales(upload):
+    conversion = upload("empleados.xlsx")
+    assert conversion.replacements[0] == {
+        "type": "NOMBRE",
+        "description": "Nombre de persona",
+        "label": "[NOMBRE_1]",
+        "count": 1,
+    }
+    serialized = str(conversion.replacements)
+    for value in ["Juan", "1.020.304.050", "ejemplo.com", "1985"]:
+        assert value not in serialized
+
+
+def test_tipos_desactivados_desde_settings(settings, upload):
+    settings.ANONYMIZATION_DISABLED_TYPES = ["CORREO"]
+    conversion = upload("contrato.docx")
+    assert "juan.perez@ejemplo.com" in conversion.markdown
+    assert "[CEDULA_1]" in conversion.markdown
+
+
+def test_todas_las_fechas_desde_settings(settings, monkeypatch):
+    monkeypatch.setattr(
+        pipeline, "convert", lambda *a: ConversionResult(markdown="Firmado el 15/03/2024.\n")
+    )
+    conversion = _pending()
+
+    settings.ANONYMIZE_ALL_DATES = False
+    pipeline.process(conversion.id)
+    conversion.refresh_from_db()
+    assert conversion.markdown == "Firmado el 15/03/2024.\n"
+
+    second = _pending("y.docx")
+    settings.ANONYMIZE_ALL_DATES = True
+    pipeline.process(second.id)
+    second.refresh_from_db()
+    assert second.markdown == "Firmado el [FECHA_1].\n"
 
 
 def test_detalle_con_error(client, upload):

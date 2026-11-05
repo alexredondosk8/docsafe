@@ -55,16 +55,47 @@
 {% endif %}
 
 {% if conversion.status == "completed" %}
-  {% if not anonymization_enabled %}
+  {% if not llm_enabled %}
     <div class="alert alert-warning" role="alert">
-      <strong>Versión en desarrollo:</strong> la anonimización todavía no está implementada.
-      Este Markdown <strong>contiene los datos originales</strong> del documento.
+      <strong>Anonimización parcial (solo reglas).</strong>
+      Se reemplazaron correos, teléfonos, documentos, NIT, fechas de nacimiento, edades,
+      direcciones, contratos y los nombres o empresas reconocibles por su contexto.
+      Nombres, empresas o direcciones mencionados de forma libre en el texto
+      <strong>pueden no detectarse</strong>: revisa el resultado antes de compartirlo.
     </div>
   {% endif %}
 
   {% for warning in conversion.warnings %}
     <div class="alert alert-secondary py-2" role="alert">{{ warning }}</div>
   {% endfor %}
+
+  <div class="card shadow-sm mb-3">
+    <div class="card-header">Reemplazos realizados</div>
+    {% if conversion.replacements %}
+    <div class="table-responsive">
+      <table class="table table-sm align-middle mb-0">
+        <thead>
+          <tr>
+            <th scope="col">Tipo de dato</th>
+            <th scope="col">Etiqueta</th>
+            <th scope="col" class="text-end">Apariciones</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for item in conversion.replacements %}
+          <tr>
+            <td>{{ item.description }}</td>
+            <td><code>{{ item.label }}</code></td>
+            <td class="text-end">{{ item.count }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="card-body text-secondary">No se detectaron datos personales con las reglas actuales.</div>
+    {% endif %}
+  </div>
 
   <div class="card shadow-sm mb-3">
     <div class="card-header d-flex align-items-center justify-content-between">
