@@ -10,8 +10,18 @@
 <body class="bg-body-tertiary">
   <nav class="navbar navbar-expand bg-dark" data-bs-theme="dark">
     <div class="container">
-      <a class="navbar-brand fw-semibold" href="{% url 'documents:home' %}">DocSafe</a>
-      <span class="navbar-text small">Anonimizador local de documentos</span>
+      <a class="navbar-brand fw-semibold" href="{% url 'documents:upload' %}">DocSafe</a>
+      {% with url_name=request.resolver_match.url_name %}
+      <ul class="navbar-nav me-auto">
+        <li class="nav-item">
+          <a class="nav-link{% if url_name == 'upload' %} active{% endif %}" href="{% url 'documents:upload' %}">Subir documento</a>
+        </li>
+        <li class="nav-item">
+          <a class="nav-link{% if url_name == 'history' %} active{% endif %}" href="{% url 'documents:history' %}">Historial</a>
+        </li>
+      </ul>
+      {% endwith %}
+      <span class="navbar-text small d-none d-md-inline">Anonimizador local de documentos</span>
     </div>
   </nav>
 

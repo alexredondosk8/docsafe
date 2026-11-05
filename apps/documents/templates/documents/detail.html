@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+
+{% block title %}Conversión{% endblock %}
+
+{% block content %}
+<div class="d-flex align-items-center justify-content-between mb-3">
+  <h1 class="h4 mb-0 text-break">{{ conversion.original_filename }}</h1>
+  {% include "documents/_status_badge.html" %}
+</div>
+
+<div class="card shadow-sm mb-3">
+  <div class="card-body">
+    <dl class="row mb-0">
+      <dt class="col-sm-3">Tipo</dt>
+      <dd class="col-sm-9">{{ conversion.get_file_type_display }}</dd>
+      <dt class="col-sm-3">Tamaño</dt>
+      <dd class="col-sm-9">{{ conversion.size_bytes|filesizeformat }}</dd>
+      <dt class="col-sm-3">Subido</dt>
+      <dd class="col-sm-9">{{ conversion.created_at|date:"j \d\e F \d\e Y, H:i" }}</dd>
+      <dt class="col-sm-3">Progreso</dt>
+      <dd class="col-sm-9">
+        <div class="progress" role="progressbar" aria-label="Progreso"
+             aria-valuenow="{{ conversion.progress }}" aria-valuemin="0" aria-valuemax="100">
+          <div class="progress-bar" style="width: {{ conversion.progress }}%">{{ conversion.progress }}%</div>
+        </div>
+      </dd>
+    </dl>
+    {% if conversion.status == "error" and conversion.error_message %}
+      <div class="alert alert-danger mt-3 mb-0" role="alert">{{ conversion.error_message }}</div>
+    {% endif %}
+  </div>
+</div>
+
+{% if conversion.status == "pending" %}
+  <div class="alert alert-info" role="alert">
+    El documento está en cola. La conversión a Markdown se activará en las siguientes fases del MVP.
+  </div>
+{% endif %}
+
+<div class="d-flex gap-2">
+  <a class="btn btn-outline-secondary" href="{% url 'documents:history' %}">Ver historial</a>
+  <a class="btn btn-outline-primary" href="{% url 'documents:upload' %}">Subir otro documento</a>
+  <form method="post" action="{% url 'documents:delete' conversion.id %}" class="ms-auto"
+        onsubmit="return confirm('¿Eliminar esta conversión y su archivo? No se puede deshacer.');">
+    {% csrf_token %}
+    <button type="submit" class="btn btn-outline-danger">Eliminar</button>
+  </form>
+</div>
+{% endblock %}

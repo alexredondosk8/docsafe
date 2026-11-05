@@ -106,8 +106,14 @@ STATICFILES_DIRS = [BASE_DIR / "static"]
 # Sirve directamente desde static/ sin necesidad de ejecutar collectstatic.
 WHITENOISE_USE_FINDERS = True
 
-# --- Límites de subida (se usan desde la Fase 1) ----------------------------------------
+# --- Mensajes de la interfaz (clases de alerta de Bootstrap) ---------------------------
+MESSAGE_TAGS = {40: "danger"}  # messages.ERROR → alert-danger
+
+# --- Límites de subida ------------------------------------------------------------------
 MAX_UPLOAD_SIZE_MB = env.int("DOCSAFE_MAX_UPLOAD_MB", default=20)
+# Archivos mayores a 2,5 MB se escriben en un temporal dentro de var/ (no en la carpeta
+# temporal del sistema), para que todo quede bajo control de la aplicación.
+FILE_UPLOAD_TEMP_DIR = str(UPLOADS_DIR)
 
 # --- LLM (se usa desde la Fase 5) -------------------------------------------------------
 # La clave nunca se envía al navegador ni se muestra en ninguna vista.

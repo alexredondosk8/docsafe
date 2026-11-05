@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+
+{% block title %}Historial{% endblock %}
+
+{% block content %}
+<h1 class="h4 mb-3">Historial de conversiones</h1>
+
+{% if page.object_list %}
+<div class="card shadow-sm">
+  <div class="table-responsive">
+    <table class="table table-hover align-middle mb-0">
+      <thead>
+        <tr>
+          <th scope="col">Documento</th>
+          <th scope="col">Tipo</th>
+          <th scope="col" class="text-end">Tamaño</th>
+          <th scope="col">Estado</th>
+          <th scope="col">Fecha</th>
+          <th scope="col"><span class="visually-hidden">Acciones</span></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for conversion in page.object_list %}
+        <tr>
+          <td class="text-break">
+            <a href="{% url 'documents:detail' conversion.id %}">{{ conversion.original_filename }}</a>
+          </td>
+          <td>{{ conversion.get_file_type_display }}</td>
+          <td class="text-end text-nowrap">{{ conversion.size_bytes|filesizeformat }}</td>
+          <td>{% include "documents/_status_badge.html" %}</td>
+          <td class="text-nowrap">{{ conversion.created_at|date:"d/m/Y H:i" }}</td>
+          <td class="text-end">
+            <form method="post" action="{% url 'documents:delete' conversion.id %}"
+                  onsubmit="return confirm('¿Eliminar esta conversión y su archivo? No se puede deshacer.');">
+              {% csrf_token %}
+              <button type="submit" class="btn btn-sm btn-outline-danger">Eliminar</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+{% if page.paginator.num_pages > 1 %}
+<nav class="mt-3" aria-label="Paginación">
+  <ul class="pagination">
+    {% if page.has_previous %}
+      <li class="page-item"><a class="page-link" href="?pagina={{ page.previous_page_number }}">Anterior</a></li>
+    {% endif %}
+    <li class="page-item disabled"><span class="page-link">Página {{ page.number }} de {{ page.paginator.num_pages }}</span></li>
+    {% if page.has_next %}
+      <li class="page-item"><a class="page-link" href="?pagina={{ page.next_page_number }}">Siguiente</a></li>
+    {% endif %}
+  </ul>
+</nav>
+{% endif %}
+
+{% else %}
+<div class="alert alert-secondary" role="alert">
+  Aún no hay conversiones. <a href="{% url 'documents:upload' %}" class="alert-link">Sube tu primer documento</a>.
+</div>
+{% endif %}
+{% endblock %}

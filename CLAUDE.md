@@ -56,6 +56,21 @@ nombre de empresa, NIT. Se reemplazan por etiquetas consistentes dentro del docu
 12. **Pruebas aisladas del `.env` del usuario**: `config/settings_test.py` apunta
     `DOCSAFE_ENV_FILE` a un archivo inexistente y usa una carpeta `var` temporal.
 13. `DJANGO_SECRET_KEY` es obligatoria: sin ella la aplicación no arranca.
+14. **Nombre original del archivo**: se guarda en el historial (decisión del usuario, Fase 1)
+    para reconocer cada documento. Nunca se escribe en logs ni se usa como ruta en disco
+    (el archivo se guarda como `<uuid>.<ext>`). El usuario puede eliminar cada entrada
+    (registro + archivo) desde el historial o el detalle.
+15. **Validación del tipo real sin python-magic** (`apps/documents/validation.py`, Python puro):
+    PDF por cabecera `%PDF-`; DOCX/XLSX por ZIP + `[Content_Types].xml` con el tipo principal
+    correcto (rechaza .docm/.xlsm renombrados). Detecta OLE (.doc/.xls o Office con contraseña)
+    con mensaje específico. Protección contra bombas ZIP (máx. 10 000 entradas, 500 MB sin comprimir).
+16. **Modelo `Conversion`** (`apps/documents/models.py`): id UUID, estados en inglés con etiquetas
+    en español (pending, converting, anonymizing, review, completed, error), `progress` 0-100,
+    `markdown` (solo el resultado anonimizado), `upload` temporal en `var/uploads`.
+    `UploadsStorage` lee `settings.UPLOADS_DIR` en cada uso (las pruebas lo aíslan por test).
+17. **Un archivo por subida** validado en navegador (`static/js/upload.js`) y en servidor.
+    El tamaño se valida tras recibir el archivo; cortar la subida antes queda para la Fase 7.
+18. Rutas: `/` subir, `/historial/`, `/conversiones/<uuid>/`, `/conversiones/<uuid>/eliminar/` (POST).
 
 ## Arquitectura (carpetas)
 ```
@@ -81,7 +96,7 @@ uv run ruff check . ; uv run ruff format .
 
 ## Fases
 0. Estructura, entorno, settings, .env.example, ruff, pytest, CLAUDE.md, README. ✅
-1. Subida y validación (1 archivo, ≤ 20 MB, extensión + MIME) + modelo + historial.
+1. Subida y validación (1 archivo, ≤ 20 MB, extensión + MIME) + modelo + historial. ✅
 2. Conversión determinista a Markdown (PDF, DOCX, XLSX) con archivos de ejemplo.
 3. Segundo plano (django-q2), estados y progreso en la UI.
 4. Anonimización determinista (regex) con pruebas.
