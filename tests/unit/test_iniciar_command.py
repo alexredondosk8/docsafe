@@ -35,6 +35,7 @@ def fake(monkeypatch):
     monkeypatch.setattr(iniciar, "call_command", fake_call_command)
     monkeypatch.setattr(iniciar, "requeue_unfinished", lambda: 2)
     monkeypatch.setattr(iniciar, "find_running_workers", lambda base: [])
+    monkeypatch.setattr(iniciar, "port_in_use", lambda port: False)
     return calls
 
 
@@ -61,6 +62,24 @@ def test_no_inicia_si_ya_hay_un_procesador(fake, monkeypatch):
         call_command("iniciar")
     assert fake["commands"] == []
     assert fake["process"] is None
+
+
+def test_no_inicia_si_el_puerto_esta_ocupado(fake, monkeypatch):
+    monkeypatch.setattr(iniciar, "port_in_use", lambda port: port == 8000)
+    with pytest.raises(CommandError, match="El puerto 8000 ya está en uso"):
+        call_command("iniciar")
+    assert fake["process"] is None  # no deja un procesador huérfano
+
+
+def test_port_in_use_detecta_un_servidor_real():
+    import socket
+
+    with socket.socket() as server:
+        server.bind(("127.0.0.1", 0))
+        server.listen()
+        port = server.getsockname()[1]
+        assert iniciar.port_in_use(port)
+    assert not iniciar.port_in_use(port)
 
 
 class FakeProc:

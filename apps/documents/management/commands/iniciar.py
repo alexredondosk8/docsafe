@@ -12,6 +12,7 @@ Para desarrollo con recarga automática, usar dos terminales:
 """
 
 import os
+import socket
 import subprocess
 import sys
 from pathlib import Path
@@ -44,6 +45,19 @@ def find_running_workers(base_dir: Path) -> list[int]:
     return pids
 
 
+def port_in_use(port: int) -> bool:
+    """True si ya hay un servidor escuchando en 127.0.0.1:<port>.
+
+    Necesario en Windows: el servidor de Django puede abrir un puerto ocupado sin avisar
+    y las peticiones siguen llegando al servidor antiguo.
+    """
+    try:
+        with socket.create_connection((HOST, port), timeout=0.5):
+            return True
+    except OSError:
+        return False
+
+
 class Command(BaseCommand):
     help = "Inicia el procesador en segundo plano y el servidor web local (127.0.0.1)."
 
@@ -58,6 +72,12 @@ class Command(BaseCommand):
                 "Ya hay un procesador de DocSafe en marcha (PID "
                 + ", ".join(map(str, running))
                 + "). Ciérralo (Ctrl+C en su ventana) antes de iniciar otro."
+            )
+        if port_in_use(port):
+            raise CommandError(
+                f"El puerto {port} ya está en uso (¿quedó abierto otro servidor de DocSafe?). "
+                "Ciérralo con Ctrl+C (o Ctrl+Pausa) en su ventana, o usa otro puerto: "
+                "uv run python manage.py iniciar --puerto 8001"
             )
 
         call_command("migrate", interactive=False, verbosity=0)

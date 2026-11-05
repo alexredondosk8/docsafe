@@ -130,6 +130,10 @@ Detalles:
 - `iniciar` se niega a arrancar si ya hay un `qcluster` de este proyecto en marcha (psutil): dos
   procesadores comparten la cola ORM y uno con código antiguo procesaría documentos con reglas
   viejas (ocurrió en la verificación de la Fase 4).
+- `iniciar` también se niega si el puerto ya tiene un servidor escuchando (`port_in_use`): en Windows
+  `runserver` abre un puerto ocupado sin avisar (SO_REUSEADDR) y las peticiones siguen llegando al
+  servidor antiguo (le ocurrió al usuario tras la Fase 5). En la terminal de Windows, `runserver` se
+  detiene con Ctrl+Pausa si Ctrl+C no responde.
 
 ### Anonimización por reglas (Fase 4)
 Paquete `apps/anonymization/` (Python puro):
