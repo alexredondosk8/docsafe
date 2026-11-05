@@ -1,0 +1,32 @@
+{% load static %}<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}DocSafe{% endblock %} · DocSafe</title>
+  <link rel="stylesheet" href="{% static 'vendor/bootstrap/bootstrap.min.css' %}">
+  <link rel="stylesheet" href="{% static 'css/app.css' %}">
+</head>
+<body class="bg-body-tertiary">
+  <nav class="navbar navbar-expand bg-dark" data-bs-theme="dark">
+    <div class="container">
+      <a class="navbar-brand fw-semibold" href="{% url 'documents:home' %}">DocSafe</a>
+      <span class="navbar-text small">Anonimizador local de documentos</span>
+    </div>
+  </nav>
+
+  <main class="container py-4">
+    {% for message in messages %}
+      <div class="alert alert-{{ message.tags|default:'info' }}" role="alert">{{ message }}</div>
+    {% endfor %}
+    {% block content %}{% endblock %}
+  </main>
+
+  <footer class="container pb-4 text-secondary small">
+    Los documentos se procesan en este equipo. Versión MVP.
+  </footer>
+
+  <script src="{% static 'vendor/bootstrap/bootstrap.bundle.min.js' %}"></script>
+  {% block scripts %}{% endblock %}
+</body>
+</html>

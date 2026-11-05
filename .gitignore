@@ -1,0 +1,20 @@
+# Entorno y secretos
+.venv/
+.env
+
+# Datos de ejecución (base de datos, archivos subidos, logs)
+var/
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Editores / sistema
+.vscode/
+.idea/
+Thumbs.db
+.DS_Store
