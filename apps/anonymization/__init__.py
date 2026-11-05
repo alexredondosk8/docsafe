@@ -7,12 +7,23 @@ Python puro (sin Django). Capas:
 
 from .anonymizer import Anonymizer, AnonymizerConfig
 from .entities import ENTITY_LABELS_ES, Entity, EntityMap, EntityType
+from .llm_detector import LLM_TYPES, LLMDetectionStats, LLMDetector
+from .review import ReviewData, ReviewEntity, ReviewError, add_term, apply_review, build_review
 
 __all__ = [
     "ENTITY_LABELS_ES",
+    "LLM_TYPES",
     "Anonymizer",
     "AnonymizerConfig",
     "Entity",
     "EntityMap",
     "EntityType",
+    "LLMDetectionStats",
+    "LLMDetector",
+    "ReviewData",
+    "ReviewEntity",
+    "ReviewError",
+    "add_term",
+    "apply_review",
+    "build_review",
 ]

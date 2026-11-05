@@ -49,7 +49,11 @@ class FakeLLMServer:
             ]
             return httpx2.Response(200, json={"object": "list", "data": data})
         if request.url.path.endswith("/chat/completions"):
-            return httpx2.Response(200, json=chat_response(self.chat_content))
+            content = self.chat_content
+            if callable(content):  # respuesta según el texto enviado
+                body = json.loads(request.content)
+                content = content(body["messages"][-1]["content"])
+            return httpx2.Response(200, json=chat_response(content))
         return httpx2.Response(404, json={"error": {"message": "ruta desconocida"}})
 
     def provider(self, **config) -> OpenAICompatibleProvider:

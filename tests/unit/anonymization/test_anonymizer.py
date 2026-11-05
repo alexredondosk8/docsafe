@@ -75,6 +75,26 @@ def test_nit_sin_digito_de_verificacion_misma_etiqueta():
     assert out == "NIT [NIT_1] y luego [NIT_1]"
 
 
+def test_mencion_suelta_de_nombre_o_apellido():
+    text = "Firma: Gloria Restrepo Vélez.\n\nGloria comentó que la señora Restrepo viaja."
+    out = Anonymizer().anonymize(text)
+    assert "Gloria" not in out and "Restrepo" not in out
+    assert out.count("[NOMBRE_") == 3
+
+
+def test_mencion_suelta_ambigua_no_se_toca():
+    text = "Firma: Juan Pérez Gómez.\n\nNombre: Ana Pérez Ruiz.\n\nPérez llegó tarde."
+    out = Anonymizer().anonymize(text)
+    assert "Pérez llegó tarde." in out  # dos personas con ese apellido: no se adivina
+
+
+def test_mencion_suelta_exige_mayuscula_y_longitud():
+    text = "Firma: Rosa Luz Esperanza Gil.\n\nLa esperanza y la rosa; Luz y Gil."
+    out = Anonymizer().anonymize(text)
+    assert "La esperanza y la rosa" in out  # en minúscula no son el nombre
+    assert "Luz y Gil." in out  # menos de 4 letras
+
+
 def test_edad_no_se_propaga():
     out = Anonymizer().anonymize("Edad: 39. Hay 39 sillas.")
     assert out == "Edad: [EDAD_1]. Hay 39 sillas."

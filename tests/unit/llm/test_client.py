@@ -174,11 +174,57 @@ def test_chat_json():
     assert body["messages"][0] == {"role": "system", "content": "sistema"}
 
 
-def test_chat_json_error_de_conexion():
+def test_chat_json_error_de_conexion_es_fatal():
     server = FakeLLMServer()
     server.error = httpx2.ConnectError("x")
-    with pytest.raises(LLMError, match="No se pudo conectar"):
+    with pytest.raises(LLMError, match="No se pudo conectar") as info:
         server.provider().chat_json("s", "u")
+    assert info.value.kind == "connection"
+    assert info.value.is_fatal
+
+
+@pytest.mark.parametrize(
+    ("error", "status", "kind", "fatal"),
+    [
+        (httpx2.ReadTimeout("lento"), None, "timeout", False),
+        (None, 401, "auth", True),
+        (None, 404, "config", True),
+        (None, 500, "other", False),
+    ],
+)
+def test_chat_json_tipos_de_error(error, status, kind, fatal):
+    server = FakeLLMServer()
+    server.error, server.status = error, status
+    with pytest.raises(LLMError) as info:
+        server.provider().chat_json("s", "u")
+    assert info.value.kind == kind
+    assert info.value.is_fatal is fatal
+
+
+def test_respuesta_no_json_no_es_fatal():
+    server = FakeLLMServer(chat_content="no es json")
+    with pytest.raises(LLMError) as info:
+        server.provider().chat_json("s", "u")
+    assert info.value.kind == "response"
+    assert not info.value.is_fatal
+
+
+def test_desactiva_razonamiento_si_se_configura():
+    server = FakeLLMServer(chat_content="{}")
+    server.provider(reasoning_effort="none").chat_json("s", "u")
+    assert server.last_json()["reasoning_effort"] == "none"
+
+
+def test_configuracion_lee_razonamiento_de_settings(settings):
+    settings.LLM_REASONING_EFFORT = " none "
+    assert LLMConfig.from_settings().reasoning_effort == "none"
+    assert LLMConfig.from_settings().extra_body == {"reasoning_effort": "none"}
+
+
+def test_no_envia_razonamiento_si_esta_vacio():
+    server = FakeLLMServer(chat_content="{}")
+    server.provider(reasoning_effort="").chat_json("s", "u")
+    assert "reasoning_effort" not in server.last_json()
 
 
 @pytest.mark.parametrize(

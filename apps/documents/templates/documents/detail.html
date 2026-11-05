@@ -38,8 +38,11 @@
   <div class="alert alert-info" role="status" id="active-info"
        data-status-url="{% url 'documents:status' conversion.id %}"
        data-status="{{ conversion.status }}">
-    <span id="status-text">{{ conversion.get_status_display }}…</span>
+    <strong id="status-text">{{ conversion.progress_message|default:conversion.get_status_display }}…</strong>
     Esta página se actualiza sola; puedes salir y volver más tarde.
+    {% if conversion.status == "anonymizing" %}
+      <div class="small mt-1">Con IA, cada fragmento del documento puede tardar varios segundos.</div>
+    {% endif %}
     <div class="small mt-2 d-none" id="stuck-hint">
       Si se queda en «Pendiente», comprueba que el procesador en segundo plano esté en marcha
       (<code>uv run python manage.py iniciar</code>).
@@ -54,14 +57,18 @@
   </div>
 {% endif %}
 
+{% if conversion.in_review %}
+  {% include "documents/_review.html" %}
+{% endif %}
+
 {% if conversion.status == "completed" %}
-  {% if not llm_enabled %}
+  {% if conversion.llm_warning %}
     <div class="alert alert-warning" role="alert">
-      <strong>Anonimización parcial (solo reglas).</strong>
-      Se reemplazaron correos, teléfonos, documentos, NIT, fechas de nacimiento, edades,
-      direcciones, contratos y los nombres o empresas reconocibles por su contexto.
-      Nombres, empresas o direcciones mencionados de forma libre en el texto
-      <strong>pueden no detectarse</strong>: revisa el resultado antes de compartirlo.
+      <strong>{% if conversion.llm_status %}{{ conversion.get_llm_status_display }}{% else %}Sin IA{% endif %}.</strong>
+      Las reglas reemplazan correos, teléfonos, documentos, NIT, fechas de nacimiento, edades,
+      direcciones, contratos y nombres o empresas reconocibles por su contexto, pero nombres,
+      empresas o direcciones mencionados de forma libre <strong>pueden no detectarse</strong>.
+      Revisa el resultado antes de compartirlo.
     </div>
   {% endif %}
 
@@ -93,7 +100,7 @@
       </table>
     </div>
     {% else %}
-    <div class="card-body text-secondary">No se detectaron datos personales con las reglas actuales.</div>
+    <div class="card-body text-secondary">No se reemplazó ningún dato.</div>
     {% endif %}
   </div>
 
@@ -112,7 +119,7 @@
   <form method="post" action="{% url 'documents:delete' conversion.id %}" class="ms-auto"
         onsubmit="return confirm('¿Eliminar esta conversión y su archivo? No se puede deshacer.');">
     {% csrf_token %}
-    <button type="submit" class="btn btn-outline-danger">Eliminar</button>
+    <button type="submit" class="btn btn-outline-danger">{% if conversion.in_review %}Descartar y eliminar{% else %}Eliminar{% endif %}</button>
   </form>
 </div>
 {% endblock %}

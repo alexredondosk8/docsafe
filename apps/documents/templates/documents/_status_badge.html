@@ -1,5 +1,5 @@
 {% if conversion.status == "completed" %}<span class="badge text-bg-success">{{ conversion.get_status_display }}</span>
 {% elif conversion.status == "error" %}<span class="badge text-bg-danger">{{ conversion.get_status_display }}</span>
-{% elif conversion.status == "review" %}<span class="badge text-bg-warning">{{ conversion.get_status_display }}</span>
+{% elif conversion.status == "review" %}<span class="badge text-bg-warning">{{ conversion.get_status_display }} · pendiente de confirmar</span>
 {% elif conversion.status == "pending" %}<span class="badge text-bg-secondary">{{ conversion.get_status_display }}</span>
 {% else %}<span class="badge text-bg-primary">{{ conversion.get_status_display }}</span>{% endif %}

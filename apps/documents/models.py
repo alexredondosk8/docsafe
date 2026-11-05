@@ -44,6 +44,14 @@ class Conversion(models.Model):
         COMPLETED = "completed", "Completado"
         ERROR = "error", "Error"
 
+    class LLMStatus(models.TextChoices):
+        NOT_USED = "", "Sin IA"
+        DISABLED = "disabled", "IA desactivada en la configuración"
+        NOT_CONFIGURED = "not_configured", "IA sin configurar"
+        COMPLETE = "complete", "IA aplicada a todo el documento"
+        PARTIAL = "partial", "IA aplicada solo a una parte del documento"
+        FAILED = "failed", "IA no disponible"
+
     class FileType(models.TextChoices):
         PDF = "pdf", "PDF"
         DOCX = "docx", "Word (.docx)"
@@ -61,6 +69,15 @@ class Conversion(models.Model):
         "estado", max_length=20, choices=Status.choices, default=Status.PENDING
     )
     progress = models.PositiveSmallIntegerField("progreso (%)", default=0)
+    # Detalle del paso actual (p. ej. "Analizando con IA: fragmento 3 de 12"). Sin contenido.
+    progress_message = models.CharField("detalle del progreso", max_length=200, blank=True)
+    llm_status = models.CharField(
+        "uso de IA", max_length=20, choices=LLMStatus.choices, default="", blank=True
+    )
+    # --- Datos TEMPORALES de la revisión (contienen datos reales) ---------------------------
+    # Solo existen mientras status == "review"; se borran al confirmar, eliminar o caducar.
+    review_text = models.TextField("texto original (temporal)", blank=True)
+    review_data = models.JSONField("revisión (temporal)", default=dict, blank=True)
     # Mensaje para el usuario; nunca debe contener contenido del documento.
     error_message = models.CharField("mensaje de error", max_length=500, blank=True)
     # Avisos para el usuario (p. ej. páginas omitidas). Nunca contenido del documento.
@@ -88,6 +105,15 @@ class Conversion(models.Model):
     @property
     def is_finished(self) -> bool:
         return self.status in {self.Status.COMPLETED, self.Status.ERROR}
+
+    @property
+    def in_review(self) -> bool:
+        return self.status == self.Status.REVIEW
+
+    @property
+    def llm_warning(self) -> bool:
+        """La IA no se aplicó a todo el documento: conviene revisar con más cuidado."""
+        return self.llm_status != self.LLMStatus.COMPLETE
 
     @property
     def is_active(self) -> bool:

@@ -14,7 +14,7 @@ from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 
 from .entities import NUMERIC_TYPES, EntityMap, EntityType, Span, normalize_value
-from .rules import LEADING_STOPWORDS, Rule, build_rules
+from .rules import LEADING_STOPWORDS, PRIORITY, Rule, build_rules
 from .tables import detect_in_tables
 
 Detector = Callable[[str], Iterable[Span]]
@@ -117,6 +117,47 @@ def resolve_overlaps(spans: Iterable[Span]) -> list[Span]:
     return sorted(accepted, key=lambda s: s.start)
 
 
+_NAME_CONNECTORS = {"de", "del", "la", "las", "los", "y"}
+_MIN_PARTIAL_NAME = 4
+
+
+def partial_name_mentions(text: str, spans: list[Span]) -> list[Span]:
+    """Menciones sueltas del nombre o apellido de una persona ya detectada.
+
+    Tras "Gloria Restrepo", un "Gloria comentó…" o "la señora Restrepo" también es un dato
+    personal. Solo se buscan palabras de 4+ letras, escritas con mayúscula igual que en el
+    nombre completo, y que pertenezcan a UNA sola persona detectada (si dos personas comparten
+    apellido, no se adivina). Prioridad baja: cualquier otra detección gana.
+    """
+    owners: dict[str, set[str]] = {}
+    for span in spans:
+        if span.type != EntityType.NOMBRE:
+            continue
+        words = text[span.start : span.end].split()
+        if len(words) < 2:
+            continue
+        person = normalize_value(EntityType.NOMBRE, " ".join(words))
+        for word in words:
+            word = word.strip(".,;:")
+            if (
+                len(word) >= _MIN_PARTIAL_NAME
+                and word[0].isupper()
+                and word.lower() not in _NAME_CONNECTORS
+            ):
+                owners.setdefault(word, set()).add(person)
+
+    extra = []
+    priority = PRIORITY[EntityType.NOMBRE] - 3
+    for word, persons in owners.items():
+        if len(persons) != 1:
+            continue
+        for match in re.finditer(rf"(?<!\w){re.escape(word)}(?!\w)", text):
+            extra.append(
+                Span(match.start(), match.end(), EntityType.NOMBRE, priority, "propagacion")
+            )
+    return spans + extra
+
+
 def replace_spans(text: str, spans: list[Span], entity_map: EntityMap) -> str:
     """Reemplaza los fragmentos (ya sin solapamientos) por sus etiquetas."""
     labels = [entity_map.label_for(s.type, text[s.start : s.end]) for s in spans]
@@ -149,7 +190,10 @@ class Anonymizer:
     def find_spans(self, text: str) -> list[Span]:
         spans = [span for detector in self.detectors for span in detector(text)]
         spans = [s for s in spans if s.type not in self.config.disabled_types]
-        return resolve_overlaps(propagate(text, spans))
+        spans = propagate(text, spans)
+        if EntityType.NOMBRE not in self.config.disabled_types:
+            spans = partial_name_mentions(text, spans)
+        return resolve_overlaps(spans)
 
     def anonymize(self, text: str) -> str:
         return replace_spans(text, self.find_spans(text), self.entity_map)

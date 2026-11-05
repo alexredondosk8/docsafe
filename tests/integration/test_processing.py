@@ -23,14 +23,33 @@ UPLOAD_URL = reverse("documents:upload")
 def upload(client, django_capture_on_commit_callbacks):
     """Sube un archivo de ejemplo y ejecuta la tarea (síncrona) al confirmar la transacción."""
 
-    def _upload(name: str, upload_name: str | None = None) -> Conversion:
+    def _upload(name: str, upload_name: str | None = None, confirm: bool = True) -> Conversion:
         data = (FIXTURES / name).read_bytes()
         file = SimpleUploadedFile(upload_name or name, data)
         with django_capture_on_commit_callbacks(execute=True):
             client.post(UPLOAD_URL, {"file": file})
-        return Conversion.objects.get()
+        conversion = Conversion.objects.get()
+        if confirm and conversion.in_review:
+            confirm_all(client, conversion)
+            conversion.refresh_from_db()
+        return conversion
 
     return _upload
+
+
+def confirm_all(client, conversion: Conversion) -> None:
+    """Confirma la revisión con todas las entidades marcadas (como haría el usuario)."""
+    keys = [e["key"] for e in conversion.review_data.get("entities", [])]
+    client.post(
+        reverse("documents:review_update", args=[conversion.id]),
+        {"entidad": keys, "accion": "confirmar"},
+    )
+
+
+def _confirm_pipeline(conversion: Conversion) -> None:
+    conversion.refresh_from_db()
+    pipeline.confirm_review(conversion, pipeline.load_review(conversion))
+    conversion.refresh_from_db()
 
 
 def uploads_on_disk() -> list[Path]:
@@ -67,9 +86,7 @@ def test_archivo_subido_se_borra_al_terminar(upload):
 def test_avisos_se_guardan(upload):
     conversion = upload("mixto.pdf")
     assert conversion.status == Conversion.Status.COMPLETED
-    assert conversion.warnings == [
-        "Se omitieron 1 de 2 páginas sin texto (posiblemente escaneadas)."
-    ]
+    assert "Se omitieron 1 de 2 páginas sin texto (posiblemente escaneadas)." in conversion.warnings
 
 
 @pytest.mark.parametrize(
@@ -165,7 +182,7 @@ def test_reanuda_conversion_interrumpida(monkeypatch):
     pipeline.process(conversion.id)
 
     conversion.refresh_from_db()
-    assert conversion.status == Conversion.Status.COMPLETED
+    assert conversion.status == Conversion.Status.REVIEW
 
 
 def test_reencola_conversiones_sin_terminar(monkeypatch):
@@ -180,7 +197,7 @@ def test_reencola_conversiones_sin_terminar(monkeypatch):
     assert tasks.requeue_unfinished() == 1  # con sync=True se procesa al instante
 
     pending.refresh_from_db()
-    assert pending.status == Conversion.Status.COMPLETED
+    assert pending.status == Conversion.Status.REVIEW
 
 
 def test_pagina_principal_acepta_head(client):
@@ -200,6 +217,7 @@ def test_estado_json_sin_contenido(client, upload):
         "status": "completed",
         "status_display": "Completado",
         "progress": 100,
+        "progress_message": "",
         "is_active": False,
     }
 
@@ -224,7 +242,7 @@ def test_detalle_completado_muestra_vista_previa_reemplazos_y_aviso(client, uplo
 
     assert "Vista previa del Markdown" in content
     assert "# Contrato de prestación de servicios No. [CONTRATO_1]" in content
-    assert "Anonimización parcial (solo reglas)" in content  # hasta la Fase 6 (LLM)
+    assert "IA sin configurar" in content  # en las pruebas no hay modelo configurado
     assert "Reemplazos realizados" in content
     assert "<code>[CEDULA_1]</code>" in content
     assert "js/status.js" not in content
@@ -270,13 +288,13 @@ def test_todas_las_fechas_desde_settings(settings, monkeypatch):
 
     settings.ANONYMIZE_ALL_DATES = False
     pipeline.process(conversion.id)
-    conversion.refresh_from_db()
+    _confirm_pipeline(conversion)
     assert conversion.markdown == "Firmado el 15/03/2024.\n"
 
     second = _pending("y.docx")
     settings.ANONYMIZE_ALL_DATES = True
     pipeline.process(second.id)
-    second.refresh_from_db()
+    _confirm_pipeline(second)
     assert second.markdown == "Firmado el [FECHA_1].\n"
 
 

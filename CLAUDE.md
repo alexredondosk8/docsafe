@@ -191,6 +191,42 @@ Paquete `apps/anonymization/` (Python puro):
   sin red). Verificado contra Ollama local real (qwen3:4b): ~1–10 s por respuesta; los modelos qwen3
   "piensan" antes de responder (considerar en la Fase 6).
 
+### Anonimización con IA y revisión (Fase 6 — EN CURSO)
+Decisiones del usuario: la revisión permite **desmarcar y añadir** reemplazos; el texto original y
+los valores reales se guardan **solo mientras la conversión está «En revisión»** (se borran al
+confirmar, al descartar o a las 24 h); si la IA falla, **se sigue solo con reglas** y se avisa.
+- `apps/anonymization/chunking.py`: fragmentos de ≤ `DOCSAFE_IA_TAMANO_FRAGMENTO` (2500) caracteres,
+  trozos exactos del original (offsets), sin partir párrafos ni tablas salvo que no quepan.
+- `llm_detector.py` (`LLMDetector`, Python puro, recibe `chat_json`): prompt en español, JSON
+  `{"entidades":[{"tipo","valor"}]}`; valida tipo (acepta sinónimos), descarta valores que no aparecen
+  en el fragmento (invenciones), etiquetas `[X_n]`, valores largos; un nombre marcado con tipo numérico
+  sin dígitos (visto con qwen3:8b: nombres como CEDULA) se reclasifica como NOMBRE. Reintenta respuestas
+  inválidas (2 veces); error fatal (conexión/clave/modelo) o 3 fallos seguidos ⇒ detiene la IA.
+  Estadísticas → `llm_status` (complete/partial/failed/disabled/not_configured) y avisos.
+- `anonymizer.partial_name_mentions`: tras "Gloria Restrepo", "Gloria" o "Restrepo" sueltos (≥4 letras,
+  con mayúscula, de una sola persona) también se reemplazan (qwen3:8b no los reporta).
+- `review.py`: `build_review` agrupa en entidades y une variantes (nombre ⊂ nombre completo con mismo
+  primer nombre; mención de una palabra si es de una única persona; empresa prefijo de otra);
+  `add_term` (lo añadido por el usuario manda sobre solapamientos); `apply_review` renumera etiquetas
+  de las entidades marcadas y devuelve resumen sin valores reales.
+- `entities.normalize_value`: tipos numéricos sin dígitos se comparan como texto (antes se unían
+  bajo la clave vacía).
+- Cliente LLM: `LLMError.kind` / `is_fatal`; `LLM_REASONING_EFFORT=none` (por defecto) desactiva el
+  razonamiento previo: qwen3:8b pasó de 65 s a 11 s por párrafo con el mismo resultado.
+- Flujo: … → anonimizando (reglas 45 %, IA 50-95 % con "fragmento i de n" en `progress_message`) →
+  **review** (100 %). Campos temporales `review_text`, `review_data`. Rutas POST
+  `/conversiones/<uuid>/revision/` (accion=vista_previa|confirmar) y `/revision/agregar/`.
+  `expire_stale_reviews()` (en detalle e historial). Página de revisión con `Cache-Control: no-store`.
+- `.env`: `DOCSAFE_USAR_IA`, `DOCSAFE_IA_TAMANO_FRAGMENTO`, `DOCSAFE_REVISION_HORAS`,
+  `LLM_REASONING_EFFORT`; `DOCSAFE_TASK_TIMEOUT` sube a 14400 s.
+- Verificado con Ollama real (qwen3:8b): contrato PDF/DOCX y XLSX de ejemplo sin fugas, ~25-35 s cada
+  uno; texto libre sin pistas: detecta personas, dirección libre y empresas sin sufijo.
+- Migración 0004 ya aplicada a `var/db.sqlite3`. 427 pruebas pasan.
+- **PENDIENTE para cerrar la Fase 6**: verificar la pantalla de revisión en el navegador (crear una
+  conversión «En revisión» con el contrato de ejemplo sin pasar por la cola, en `runserver` aparte),
+  revisar el diseño en pantalla estrecha, programar la caducidad también con una tarea periódica de
+  django-q (hoy solo al abrir detalle/historial), y commit final de la fase.
+
 ## Arquitectura (carpetas)
 ```
 config/              Proyecto Django (settings, settings_test, urls, wsgi, asgi)
@@ -221,10 +257,9 @@ uv run ruff check . ; uv run ruff format .
 3. Segundo plano (django-q2), estados y progreso en la UI. ✅
 4. Anonimización determinista (regex) con pruebas. ✅
 5. Cliente LLM, página de Configuración, probar conexión, aviso de privacidad. ✅
-6. Anonimización con LLM, fragmentación, etiquetas consistentes, pantalla de revisión.
+6. Anonimización con LLM, fragmentación, etiquetas consistentes, pantalla de revisión. 🔶 en curso
 7. Endurecimiento, pruebas de extremo a extremo, README completo (Windows/Linux + Ollama).
 
 ## Preguntas abiertas
-- Pantalla de revisión (Fase 6): ¿solo confirmar/cancelar o también desmarcar/añadir
-  reemplazos? ¿Se muestra el valor original de forma temporal hasta confirmar?
+- (Resuelta en Fase 6) Revisión: desmarcar y añadir; originales temporales hasta confirmar (24 h).
 - (Resuelta en Fase 2) PDF con pymupdf4llm (AGPL, aceptable para uso personal).

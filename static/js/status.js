@@ -24,7 +24,7 @@
       bar.style.width = data.progress + "%";
       bar.textContent = data.progress + "%";
       progress.setAttribute("aria-valuenow", data.progress);
-      text.textContent = data.status_display + "…";
+      text.textContent = (data.progress_message || data.status_display) + "…";
       if (!data.is_active) {
         window.location.reload();
         return;

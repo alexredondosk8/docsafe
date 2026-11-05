@@ -9,6 +9,8 @@ urlpatterns = [
     path("historial/", views.history, name="history"),
     path("conversiones/<uuid:pk>/", views.detail, name="detail"),
     path("conversiones/<uuid:pk>/estado/", views.status, name="status"),
+    path("conversiones/<uuid:pk>/revision/", views.review_update, name="review_update"),
+    path("conversiones/<uuid:pk>/revision/agregar/", views.review_add, name="review_add"),
     path("conversiones/<uuid:pk>/descargar/", views.download, name="download"),
     path("conversiones/<uuid:pk>/eliminar/", views.delete, name="delete"),
 ]

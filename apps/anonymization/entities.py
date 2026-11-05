@@ -93,6 +93,10 @@ _COMPANY_SUFFIX = re.compile(r"[\s.,]+")
 def normalize_value(entity_type: EntityType, value: str) -> str:
     """Clave de comparación: dos valores con la misma clave son la misma entidad."""
     value = value.strip()
+    if entity_type in NUMERIC_TYPES and not re.search(r"\d", value):
+        # Sin dígitos (p. ej. un nombre mal clasificado): se compara como texto, para no unir
+        # valores distintos bajo la misma clave vacía.
+        return " ".join(re.sub(r"[^\w#-]+", " ", _strip_accents(value).casefold()).split())
     if entity_type == EntityType.NIT:
         digits = re.sub(r"\D", "", value)
         return digits[:9] if len(digits) >= 9 else digits  # sin dígito de verificación

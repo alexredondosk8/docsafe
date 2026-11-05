@@ -1,0 +1,104 @@
+<div class="alert alert-primary" role="status">
+  <strong>Revisa los reemplazos antes de generar el Markdown.</strong>
+  Desmarca lo que no sea un dato personal y añade lo que se haya escapado.
+  Esta página muestra los <strong>valores originales</strong>: se guardan solo en este equipo y
+  se borran al confirmar, al descartar o, si no confirmas, en {{ review_expiry_hours }} horas.
+</div>
+
+{% if conversion.llm_warning %}
+  <div class="alert alert-warning" role="alert">
+    <strong>{% if conversion.llm_status %}{{ conversion.get_llm_status_display }}{% else %}Sin IA{% endif %}.</strong>
+    Revisa con más cuidado: nombres, empresas o direcciones escritos de forma libre pueden no
+    estar detectados.
+  </div>
+{% endif %}
+{% for warning in conversion.warnings %}
+  <div class="alert alert-secondary py-2" role="alert">{{ warning }}</div>
+{% endfor %}
+
+<form method="post" action="{% url 'documents:review_update' conversion.id %}" id="revision">
+  {% csrf_token %}
+  <div class="card shadow-sm mb-3">
+    <div class="card-header d-flex flex-wrap align-items-center justify-content-between gap-2">
+      <span>Reemplazos detectados ({{ review_entities|length }})</span>
+      <span class="small text-secondary">Marcado = se reemplaza</span>
+    </div>
+    {% if review_entities %}
+    <div class="table-responsive">
+      <table class="table table-sm align-middle mb-0">
+        <thead>
+          <tr>
+            <th scope="col" class="text-center">Reemplazar</th>
+            <th scope="col">Valor original</th>
+            <th scope="col">Tipo</th>
+            <th scope="col">Etiqueta</th>
+            <th scope="col" class="text-end">Veces</th>
+            <th scope="col">Detectado por</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in review_entities %}
+          <tr class="{% if not row.entity.enabled %}text-secondary{% endif %}">
+            <td class="text-center">
+              <input class="form-check-input" type="checkbox" name="entidad"
+                     value="{{ row.entity.key }}" id="entidad-{{ row.entity.key }}"
+                     {% if row.entity.enabled %}checked{% endif %}
+                     aria-label="Reemplazar {{ row.entity.values.0 }}">
+            </td>
+            <td class="text-break">
+              <label for="entidad-{{ row.entity.key }}">
+                {% for value in row.entity.values %}<span class="d-block">{{ value }}</span>{% endfor %}
+              </label>
+            </td>
+            <td>{{ row.entity.description }}</td>
+            <td>{% if row.label %}<code>{{ row.label }}</code>{% else %}<span class="small">no se reemplaza</span>{% endif %}</td>
+            <td class="text-end">{{ row.entity.count }}</td>
+            <td class="small">{{ row.entity.source_labels|join:", " }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="card-body text-secondary">No se detectaron datos personales. Añade abajo los que veas.</div>
+    {% endif %}
+    <div class="card-footer d-flex flex-wrap gap-2">
+      <button type="submit" name="accion" value="vista_previa" class="btn btn-outline-primary">
+        Actualizar vista previa
+      </button>
+      <button type="submit" name="accion" value="confirmar" class="btn btn-success ms-auto"
+              onclick="return confirm('¿Generar el Markdown con esta selección? Después se borrarán los datos originales.');">
+        Confirmar y generar Markdown
+      </button>
+    </div>
+  </div>
+</form>
+
+<div class="card shadow-sm mb-3">
+  <div class="card-header">¿Falta algún dato? Añádelo</div>
+  <div class="card-body">
+    <form method="post" action="{% url 'documents:review_add' conversion.id %}" class="row g-2 align-items-end">
+      {% csrf_token %}
+      <div class="col-md-6">
+        <label for="valor" class="form-label">Texto tal como aparece en el documento</label>
+        <input type="text" class="form-control" id="valor" name="valor" maxlength="200" required
+               autocomplete="off" placeholder="Ej.: Barrio La Esperanza">
+      </div>
+      <div class="col-md-4">
+        <label for="tipo" class="form-label">Tipo de dato</label>
+        <select class="form-select" id="tipo" name="tipo" required>
+          {% for value, label in entity_types %}<option value="{{ value }}">{{ label }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="col-md-2 d-grid">
+        <button type="submit" class="btn btn-primary">Añadir</button>
+      </div>
+      <div class="form-text">Se reemplazará en todas sus apariciones. Guarda antes tus casillas con «Actualizar vista previa».</div>
+    </form>
+  </div>
+</div>
+
+<div class="card shadow-sm mb-3" id="vista-previa">
+  <div class="card-header">Vista previa del Markdown anonimizado (según la última selección guardada)</div>
+  <pre class="markdown-preview mb-0 p-3" tabindex="0">{{ review_preview }}</pre>
+</div>

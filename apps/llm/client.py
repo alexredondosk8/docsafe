@@ -30,7 +30,20 @@ _MAX_MODELS_SHOWN = 30
 
 
 class LLMError(Exception):
-    """Error al usar el LLM. El mensaje está en español y es seguro mostrarlo al usuario."""
+    """Error al usar el LLM. El mensaje está en español y es seguro mostrarlo al usuario.
+
+    ``kind`` clasifica el error para decidir si reintentar:
+    "config", "connection", "auth" (no tiene sentido reintentar) o
+    "timeout", "response", "other" (puede funcionar en otro intento).
+    """
+
+    def __init__(self, message: str, kind: str = "other") -> None:
+        super().__init__(message)
+        self.kind = kind
+
+    @property
+    def is_fatal(self) -> bool:
+        return self.kind in {"config", "connection", "auth"}
 
 
 @dataclass(frozen=True)
@@ -39,6 +52,9 @@ class LLMConfig:
     model: str
     api_key: str = ""
     timeout: float = 120.0
+    # "none" desactiva el razonamiento previo de modelos como qwen3 (6 veces más rápido en
+    # Ollama con el mismo resultado). Vacío = no se envía el parámetro.
+    reasoning_effort: str = ""
 
     @classmethod
     def from_settings(cls) -> "LLMConfig":
@@ -49,7 +65,12 @@ class LLMConfig:
             model=settings.LLM_MODEL.strip(),
             api_key=settings.LLM_API_KEY,
             timeout=float(settings.LLM_TIMEOUT),
+            reasoning_effort=settings.LLM_REASONING_EFFORT.strip(),
         )
+
+    @property
+    def extra_body(self) -> dict | None:
+        return {"reasoning_effort": self.reasoning_effort} if self.reasoning_effort else None
 
     @property
     def has_api_key(self) -> bool:
@@ -172,6 +193,7 @@ class OpenAICompatibleProvider:
                 messages=[{"role": "user", "content": "Responde únicamente: OK"}],
                 max_tokens=16,
                 temperature=0,
+                extra_body=self.config.extra_body,
             )
         except openai.OpenAIError as exc:
             return ConnectionResult(
@@ -199,16 +221,17 @@ class OpenAICompatibleProvider:
         """
         errors = self.config.validation_errors()
         if errors:
-            raise LLMError(" ".join(errors))
+            raise LLMError(" ".join(errors), kind="config")
         try:
             response = self._client.chat.completions.create(
                 model=self.config.model,
                 messages=[{"role": "system", "content": system}, {"role": "user", "content": user}],
                 temperature=0,
                 response_format={"type": "json_object"},
+                extra_body=self.config.extra_body,
             )
         except openai.OpenAIError as exc:
-            raise LLMError(self._error_message(exc)) from None
+            raise LLMError(self._error_message(exc), kind=_error_kind(exc)) from None
 
         content = (response.choices[0].message.content or "") if response.choices else ""
         return parse_json_object(content)
@@ -246,6 +269,18 @@ class OpenAICompatibleProvider:
         return text
 
 
+def _error_kind(exc: Exception) -> str:
+    if isinstance(exc, openai.APITimeoutError):
+        return "timeout"
+    if isinstance(exc, openai.APIConnectionError):
+        return "connection"
+    if isinstance(exc, openai.AuthenticationError | openai.PermissionDeniedError):
+        return "auth"
+    if isinstance(exc, openai.NotFoundError):
+        return "config"
+    return "other"
+
+
 _THINK_BLOCK = ("<think>", "</think>")
 
 
@@ -264,13 +299,13 @@ def parse_json_object(content: str) -> dict:
         text = text.strip()
     start, end = text.find("{"), text.rfind("}")
     if start == -1 or end < start:
-        raise LLMError("La respuesta del modelo no contiene un objeto JSON.")
+        raise LLMError("La respuesta del modelo no contiene un objeto JSON.", kind="response")
     try:
         data = json.loads(text[start : end + 1])
     except json.JSONDecodeError:
-        raise LLMError("La respuesta del modelo no es un JSON válido.") from None
+        raise LLMError("La respuesta del modelo no es un JSON válido.", kind="response") from None
     if not isinstance(data, dict):
-        raise LLMError("La respuesta del modelo no es un objeto JSON.")
+        raise LLMError("La respuesta del modelo no es un objeto JSON.", kind="response")
     return data
 
 

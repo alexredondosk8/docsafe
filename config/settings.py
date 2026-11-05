@@ -110,8 +110,9 @@ Q_CLUSTER = {
     "orm": "default",
     "workers": 1,
     "recycle": 50,
-    "timeout": env.int("DOCSAFE_TASK_TIMEOUT", default=1800),  # segundos por documento
-    "retry": env.int("DOCSAFE_TASK_TIMEOUT", default=1800) + 60,
+    # Segundos máximos por documento (la detección con IA de un documento grande es lenta).
+    "timeout": env.int("DOCSAFE_TASK_TIMEOUT", default=14400),
+    "retry": env.int("DOCSAFE_TASK_TIMEOUT", default=14400) + 60,
     "max_attempts": 1,
     "save_limit": -1,  # no guardar resultados de tareas exitosas
     "ack_failures": True,
@@ -167,6 +168,16 @@ LLM_BASE_URL = env("LLM_BASE_URL", default="http://localhost:11434/v1")
 LLM_MODEL = env("LLM_MODEL", default="")
 LLM_API_KEY = env("LLM_API_KEY", default="")
 LLM_TIMEOUT = env.int("LLM_TIMEOUT", default=120)
+# "none" desactiva el razonamiento previo (qwen3 en Ollama: ~6 veces más rápido). Vacío = no enviar.
+LLM_REASONING_EFFORT = env("LLM_REASONING_EFFORT", default="none")
+
+# --- Anonimización con IA y revisión (Fase 6) -------------------------------------------
+# False = solo reglas (no se envía nada al modelo de lenguaje).
+LLM_ANONYMIZATION_ENABLED = env.bool("DOCSAFE_USAR_IA", default=True)
+# Tamaño máximo (caracteres) de cada fragmento que se envía al modelo.
+LLM_CHUNK_CHARS = env.int("DOCSAFE_IA_TAMANO_FRAGMENTO", default=2500)
+# Horas que se guardan los datos originales esperando la revisión del usuario.
+REVIEW_EXPIRY_HOURS = env.int("DOCSAFE_REVISION_HORAS", default=24)
 
 # --- Registro (logs) --------------------------------------------------------------------
 # Regla: NUNCA registrar contenido de documentos ni datos personales.
