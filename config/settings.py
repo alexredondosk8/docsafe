@@ -51,6 +51,7 @@ INSTALLED_APPS = [
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
+    "django_q",
     "apps.documents",
     "apps.llm",
 ]
@@ -89,7 +90,33 @@ DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.sqlite3",
         "NAME": VAR_DIR / "db.sqlite3",
+        # El servidor web y el procesador en segundo plano escriben a la vez:
+        # WAL permite leer mientras otro escribe y "timeout" espera en vez de fallar.
+        "OPTIONS": {
+            "init_command": "PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL;",
+            "transaction_mode": "IMMEDIATE",
+            "timeout": 20,
+        },
     }
+}
+
+# --- Tareas en segundo plano (django-q2, broker ORM: sin Redis) -------------------------
+# Un solo worker: uso personal y SQLite no gana nada con más concurrencia.
+# Regla de privacidad: las tareas solo reciben el id de la conversión y no devuelven nada;
+# los errores se capturan dentro de la tarea, así django-q nunca guarda trazas con contenido.
+Q_CLUSTER = {
+    "name": "docsafe",
+    "orm": "default",
+    "workers": 1,
+    "recycle": 50,
+    "timeout": env.int("DOCSAFE_TASK_TIMEOUT", default=1800),  # segundos por documento
+    "retry": env.int("DOCSAFE_TASK_TIMEOUT", default=1800) + 60,
+    "max_attempts": 1,
+    "save_limit": -1,  # no guardar resultados de tareas exitosas
+    "ack_failures": True,
+    "catch_up": False,
+    "poll": 1,
+    "label": "Tareas",
 }
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"

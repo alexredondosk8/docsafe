@@ -106,6 +106,28 @@ Detalles:
 - Herramienta de terminal (sin anonimizar): `uv run python -m apps.conversion archivo [-o salida.md]`.
 - Documentos de ejemplo: `uv run python -m tests.fixtures.generate` (regenera `tests/fixtures/`).
 
+### Procesamiento en segundo plano (Fase 3)
+- **django-q2 1.11** con broker ORM, 1 worker, `max_attempts=1`, `save_limit=-1` (no guarda resultados
+  exitosos). Probado en Windows. En pruebas `Q_CLUSTER["sync"]=True` (se ejecuta en el mismo proceso).
+- **SQLite en modo WAL** + `transaction_mode=IMMEDIATE` + `timeout=20`: web y worker escriben a la vez.
+- Flujo (`apps/documents/pipeline.py`): pendiente → convirtiendo (10 %) → anonimizando (50-95 %)
+  → completado (100 %) / error. La tarea solo recibe el id y no devuelve nada; **todas** las excepciones
+  se capturan dentro (django-q nunca guarda trazas que podrían contener texto). Errores inesperados:
+  mensaje genérico al usuario y en logs solo el tipo de excepción.
+- Cambios de estado con `UPDATE` por id: si se elimina la conversión durante el proceso, la tarea
+  se detiene (`Cancelled`) sin recrear el registro.
+- El archivo subido se borra siempre al terminar (éxito o error).
+- Reintento: una conversión no terminada (p. ej. el worker se cayó) se reprocesa desde el inicio.
+  `iniciar` vuelve a encolar las conversiones sin terminar al arrancar (encolar dos veces es inocuo).
+- `ANONYMIZATION_ENABLED = False` en `pipeline.py` hasta la Fase 4: la UI advierte que el Markdown
+  contiene datos originales. `pipeline.anonymize()` es el punto de enganche de las Fases 4-6.
+- UI: `/conversiones/<uuid>/estado/` (JSON sin contenido, `no-store`), consultado cada 1,5 s por
+  `static/js/status.js`; recarga al terminar; pista tras 15 s en «Pendiente». Vista previa en `<pre>`
+  (texto escapado) y descarga `/conversiones/<uuid>/descargar/` (`<nombre>.md`, solo si completado).
+- Campo `Conversion.warnings` (JSON, lista de avisos sin contenido).
+- `manage.py iniciar [--puerto]`: migra, reencola, lanza `qcluster` como subproceso y `runserver`
+  en 127.0.0.1 sin recarga; al salir detiene el worker. Desarrollo: runserver + qcluster en 2 terminales.
+
 ## Arquitectura (carpetas)
 ```
 config/              Proyecto Django (settings, settings_test, urls, wsgi, asgi)
@@ -122,8 +144,9 @@ tests/               unit/, integration/, e2e/, fixtures/
 ## Comandos
 ```
 uv sync                                   # instalar dependencias
-uv run python manage.py migrate           # crear/actualizar base de datos
-uv run python manage.py runserver 127.0.0.1:8000
+uv run python manage.py iniciar           # uso normal: migra + worker + servidor (127.0.0.1:8000)
+uv run python manage.py runserver 127.0.0.1:8000   # desarrollo, junto con:
+uv run python manage.py qcluster                   # procesador en segundo plano
 uv run pytest                             # pruebas
 uv run ruff check . ; uv run ruff format .
 ```
@@ -132,7 +155,7 @@ uv run ruff check . ; uv run ruff format .
 0. Estructura, entorno, settings, .env.example, ruff, pytest, CLAUDE.md, README. ✅
 1. Subida y validación (1 archivo, ≤ 20 MB, extensión + MIME) + modelo + historial. ✅
 2. Conversión determinista a Markdown (PDF, DOCX, XLSX) con archivos de ejemplo. ✅
-3. Segundo plano (django-q2), estados y progreso en la UI.
+3. Segundo plano (django-q2), estados y progreso en la UI. ✅
 4. Anonimización determinista (regex) con pruebas.
 5. Cliente LLM, página de Configuración, probar conexión, aviso de privacidad.
 6. Anonimización con LLM, fragmentación, etiquetas consistentes, pantalla de revisión.

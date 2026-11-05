@@ -13,5 +13,7 @@ os.environ.setdefault("DOCSAFE_VAR_DIR", tempfile.mkdtemp(prefix="docsafe-test-"
 from .settings import *  # noqa: E402, F403
 
 DEBUG = False
+# Las tareas se ejecutan en el mismo proceso, de forma inmediata.
+Q_CLUSTER = {**Q_CLUSTER, "sync": True}  # noqa: F405
 # En pruebas no se escriben logs a archivo.
 LOGGING = {"version": 1, "disable_existing_loggers": False}

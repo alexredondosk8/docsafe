@@ -1,20 +1,24 @@
-"""Vistas de la app de documentos: subida, detalle, historial y eliminación."""
+"""Vistas de la app de documentos: subida, detalle, estado, descarga, historial y eliminación."""
 
+import io
 import logging
 
 from django.contrib import messages
 from django.core.paginator import Paginator
+from django.http import FileResponse, Http404, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
-from django.views.decorators.http import require_http_methods, require_POST
+from django.views.decorators.http import require_GET, require_http_methods, require_POST
 
+from . import pipeline
 from .forms import UploadForm
 from .models import Conversion
+from .tasks import enqueue_conversion
 
 # Regla: no registrar nombres de archivo ni contenido (pueden tener datos personales).
 logger = logging.getLogger(__name__)
 
 
-@require_http_methods(["GET", "POST"])
+@require_http_methods(["GET", "HEAD", "POST"])
 def upload(request):
     """Pantalla principal: subir UN documento."""
     upload_error = None
@@ -33,13 +37,14 @@ def upload(request):
                 )
                 conversion.upload.save(uploaded.name, uploaded, save=False)
                 conversion.save()
+                enqueue_conversion(conversion.id)
                 logger.info(
                     "Conversión %s creada: tipo=%s tamaño=%d bytes",
                     conversion.id,
                     conversion.file_type,
                     conversion.size_bytes,
                 )
-                messages.success(request, "Archivo recibido correctamente.")
+                messages.success(request, "Archivo recibido. El procesamiento ha comenzado.")
                 return redirect("documents:detail", pk=conversion.id)
     else:
         form = UploadForm()
@@ -48,7 +53,42 @@ def upload(request):
 
 def detail(request, pk):
     conversion = get_object_or_404(Conversion, pk=pk)
-    return render(request, "documents/detail.html", {"conversion": conversion})
+    return render(
+        request,
+        "documents/detail.html",
+        {"conversion": conversion, "anonymization_enabled": pipeline.ANONYMIZATION_ENABLED},
+    )
+
+
+@require_GET
+def status(request, pk):
+    """Estado para la consulta periódica del navegador. Nunca incluye contenido."""
+    conversion = get_object_or_404(Conversion, pk=pk)
+    response = JsonResponse(
+        {
+            "status": conversion.status,
+            "status_display": conversion.get_status_display(),
+            "progress": conversion.progress,
+            "is_active": conversion.is_active,
+        }
+    )
+    response["Cache-Control"] = "no-store"
+    return response
+
+
+@require_GET
+def download(request, pk):
+    conversion = get_object_or_404(Conversion, pk=pk)
+    if conversion.status != Conversion.Status.COMPLETED or not conversion.markdown:
+        raise Http404("La conversión no está completada.")
+    response = FileResponse(
+        io.BytesIO(conversion.markdown.encode("utf-8")),
+        as_attachment=True,
+        filename=f"{conversion.stem}.md",
+        content_type="text/markdown; charset=utf-8",
+    )
+    response["Cache-Control"] = "no-store"
+    return response
 
 
 def history(request):

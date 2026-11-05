@@ -4,7 +4,7 @@ Aplicación web **local** (corre en tu PC, sin nube) que convierte documentos PD
 y Excel (.xlsx) a Markdown y elimina los datos personales y confidenciales, reemplazándolos
 por etiquetas como `[NOMBRE_1]`, `[CEDULA_1]` o `[EMPRESA_1]`.
 
-> Estado: **MVP en construcción** (Fase 0: estructura del proyecto).
+> Estado: **MVP en construcción** (Fase 3: conversión en segundo plano; anonimización pendiente).
 > La guía completa de instalación en Windows y Linux, con Ollama, llega en la Fase 7.
 
 ## Requisitos
@@ -21,12 +21,20 @@ Copia la plantilla de configuración y genera una clave secreta:
 cp .env.example .env
 uv run python -c "from django.core.management.utils import get_random_secret_key as g; print(g())"
 ```
-Pega la clave generada en `DJANGO_SECRET_KEY` dentro de `.env`. Luego:
+Pega la clave generada en `DJANGO_SECRET_KEY` dentro de `.env`. Luego inicia la aplicación
+(aplica migraciones, arranca el procesador en segundo plano y el servidor web):
 ```bash
-uv run python manage.py migrate
-uv run python manage.py runserver 127.0.0.1:8000
+uv run python manage.py iniciar
 ```
-Abre http://127.0.0.1:8000 en tu navegador.
+Abre http://127.0.0.1:8000 en tu navegador. Para salir, Ctrl+C.
+
+### Modo desarrollo (recarga automática al cambiar código)
+En dos terminales:
+```bash
+uv run python manage.py runserver 127.0.0.1:8000
+uv run python manage.py qcluster
+```
+Sin `qcluster` los documentos se quedan en «Pendiente».
 
 ## Pruebas y calidad
 ```bash

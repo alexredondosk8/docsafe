@@ -1,11 +1,12 @@
 {% extends "base.html" %}
+{% load static %}
 
 {% block title %}Conversión{% endblock %}
 
 {% block content %}
-<div class="d-flex align-items-center justify-content-between mb-3">
+<div class="d-flex align-items-center justify-content-between gap-2 mb-3">
   <h1 class="h4 mb-0 text-break">{{ conversion.original_filename }}</h1>
-  {% include "documents/_status_badge.html" %}
+  <span id="status-badge">{% include "documents/_status_badge.html" %}</span>
 </div>
 
 <div class="card shadow-sm mb-3">
@@ -17,27 +18,64 @@
       <dd class="col-sm-9">{{ conversion.size_bytes|filesizeformat }}</dd>
       <dt class="col-sm-3">Subido</dt>
       <dd class="col-sm-9">{{ conversion.created_at|date:"j \d\e F \d\e Y, H:i" }}</dd>
+      {% if conversion.completed_at %}
+      <dt class="col-sm-3">Completado</dt>
+      <dd class="col-sm-9">{{ conversion.completed_at|date:"j \d\e F \d\e Y, H:i" }}</dd>
+      {% endif %}
       <dt class="col-sm-3">Progreso</dt>
-      <dd class="col-sm-9">
-        <div class="progress" role="progressbar" aria-label="Progreso"
+      <dd class="col-sm-9 mb-0">
+        <div class="progress" role="progressbar" aria-label="Progreso" id="progress"
              aria-valuenow="{{ conversion.progress }}" aria-valuemin="0" aria-valuemax="100">
-          <div class="progress-bar" style="width: {{ conversion.progress }}%">{{ conversion.progress }}%</div>
+          <div class="progress-bar{% if conversion.is_active %} progress-bar-striped progress-bar-animated{% endif %}{% if conversion.status == 'error' %} bg-danger{% elif conversion.status == 'completed' %} bg-success{% endif %}"
+               id="progress-bar" style="width: {{ conversion.progress }}%">{{ conversion.progress }}%</div>
         </div>
       </dd>
     </dl>
-    {% if conversion.status == "error" and conversion.error_message %}
-      <div class="alert alert-danger mt-3 mb-0" role="alert">{{ conversion.error_message }}</div>
-    {% endif %}
   </div>
 </div>
 
-{% if conversion.status == "pending" %}
-  <div class="alert alert-info" role="alert">
-    El documento está en cola. La conversión a Markdown se activará en las siguientes fases del MVP.
+{% if conversion.is_active %}
+  <div class="alert alert-info" role="status" id="active-info"
+       data-status-url="{% url 'documents:status' conversion.id %}"
+       data-status="{{ conversion.status }}">
+    <span id="status-text">{{ conversion.get_status_display }}…</span>
+    Esta página se actualiza sola; puedes salir y volver más tarde.
+    <div class="small mt-2 d-none" id="stuck-hint">
+      Si se queda en «Pendiente», comprueba que el procesador en segundo plano esté en marcha
+      (<code>uv run python manage.py iniciar</code>).
+    </div>
   </div>
 {% endif %}
 
-<div class="d-flex gap-2">
+{% if conversion.status == "error" %}
+  <div class="alert alert-danger" role="alert">
+    <strong>No se pudo procesar el documento.</strong>
+    {{ conversion.error_message|default:"Error desconocido." }}
+  </div>
+{% endif %}
+
+{% if conversion.status == "completed" %}
+  {% if not anonymization_enabled %}
+    <div class="alert alert-warning" role="alert">
+      <strong>Versión en desarrollo:</strong> la anonimización todavía no está implementada.
+      Este Markdown <strong>contiene los datos originales</strong> del documento.
+    </div>
+  {% endif %}
+
+  {% for warning in conversion.warnings %}
+    <div class="alert alert-secondary py-2" role="alert">{{ warning }}</div>
+  {% endfor %}
+
+  <div class="card shadow-sm mb-3">
+    <div class="card-header d-flex align-items-center justify-content-between">
+      <span>Vista previa del Markdown</span>
+      <a class="btn btn-sm btn-primary" href="{% url 'documents:download' conversion.id %}">Descargar .md</a>
+    </div>
+    <pre class="markdown-preview mb-0 p-3" tabindex="0">{{ conversion.markdown }}</pre>
+  </div>
+{% endif %}
+
+<div class="d-flex flex-wrap gap-2">
   <a class="btn btn-outline-secondary" href="{% url 'documents:history' %}">Ver historial</a>
   <a class="btn btn-outline-primary" href="{% url 'documents:upload' %}">Subir otro documento</a>
   <form method="post" action="{% url 'documents:delete' conversion.id %}" class="ms-auto"
@@ -46,4 +84,8 @@
     <button type="submit" class="btn btn-outline-danger">Eliminar</button>
   </form>
 </div>
+{% endblock %}
+
+{% block scripts %}
+{% if conversion.is_active %}<script src="{% static 'js/status.js' %}"></script>{% endif %}
 {% endblock %}

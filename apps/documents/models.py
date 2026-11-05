@@ -1,5 +1,6 @@
 """Modelos de la app de documentos."""
 
+import logging
 import os
 import uuid
 from pathlib import Path
@@ -7,6 +8,8 @@ from pathlib import Path
 from django.conf import settings
 from django.core.files.storage import FileSystemStorage
 from django.db import models
+
+logger = logging.getLogger(__name__)
 
 
 class UploadsStorage(FileSystemStorage):
@@ -60,6 +63,8 @@ class Conversion(models.Model):
     progress = models.PositiveSmallIntegerField("progreso (%)", default=0)
     # Mensaje para el usuario; nunca debe contener contenido del documento.
     error_message = models.CharField("mensaje de error", max_length=500, blank=True)
+    # Avisos para el usuario (p. ej. páginas omitidas). Nunca contenido del documento.
+    warnings = models.JSONField("avisos", default=list, blank=True)
     # Resultado final ya anonimizado (Fases 2-6).
     markdown = models.TextField("Markdown anonimizado", blank=True)
     created_at = models.DateTimeField("creado", auto_now_add=True)
@@ -82,12 +87,23 @@ class Conversion(models.Model):
     def is_finished(self) -> bool:
         return self.status in {self.Status.COMPLETED, self.Status.ERROR}
 
+    @property
+    def is_active(self) -> bool:
+        """Está en cola o procesándose (el navegador debe seguir consultando el estado)."""
+        return self.status in {self.Status.PENDING, self.Status.CONVERTING, self.Status.ANONYMIZING}
+
     def delete_upload(self) -> None:
-        """Borra el archivo subido del disco (si existe) sin borrar el registro."""
+        """Borra el archivo subido del disco (si existe) sin borrar el registro.
+
+        Si el archivo está en uso (Windows), no falla: la tarea lo borra al terminar.
+        """
         if self.upload and self.upload.name:
             storage = self.upload.storage
-            if storage.exists(self.upload.name):
-                storage.delete(self.upload.name)
+            try:
+                if storage.exists(self.upload.name):
+                    storage.delete(self.upload.name)
+            except OSError:
+                logger.warning("No se pudo borrar el archivo de la conversión %s", self.pk)
             self.upload = ""
 
     def delete(self, *args, **kwargs):

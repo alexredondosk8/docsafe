@@ -4,8 +4,8 @@
     {
       "name": "docsafe",
       "runtimeExecutable": "uv",
-      "runtimeArgs": ["run", "python", "manage.py", "runserver", "127.0.0.1:8000", "--noreload"],
-      "port": 8000,
+      "runtimeArgs": ["run", "python", "manage.py", "iniciar", "--puerto", "8010"],
+      "port": 8010,
       "autoPort": false
     }
   ]
