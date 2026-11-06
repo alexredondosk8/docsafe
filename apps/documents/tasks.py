@@ -10,9 +10,9 @@ from . import pipeline
 logger = logging.getLogger(__name__)
 
 TASK_PATH = "apps.documents.tasks.process_conversion"
-# Tarea periódica (la crea la migración 0005): descarta revisiones caducadas aunque nadie
-# abra el detalle ni el historial.
-EXPIRE_REVIEWS_PATH = "apps.documents.tasks.expire_reviews"
+# Tarea periódica (programada por la migración 0006): caduca revisiones aunque nadie abra el
+# detalle ni el historial y borra archivos subidos que quedaron sin conversión.
+MAINTENANCE_PATH = "apps.documents.tasks.maintenance"
 
 
 def process_conversion(conversion_id: str) -> None:
@@ -20,15 +20,16 @@ def process_conversion(conversion_id: str) -> None:
     pipeline.process(conversion_id)
 
 
-def expire_reviews() -> None:
-    """Tarea periódica: borra los datos originales de las revisiones caducadas.
+def maintenance() -> None:
+    """Tarea periódica: caduca revisiones y borra archivos subidos huérfanos.
 
     Captura cualquier error para que django-q no guarde trazas; no devuelve nada.
     """
-    try:
-        pipeline.expire_stale_reviews()
-    except Exception as exc:  # noqa: BLE001
-        logger.error("Error al caducar revisiones (%s)", type(exc).__name__)
+    for step in (pipeline.expire_stale_reviews, pipeline.cleanup_orphan_uploads):
+        try:
+            step()
+        except Exception as exc:  # noqa: BLE001
+            logger.error("Error en el mantenimiento (%s: %s)", step.__name__, type(exc).__name__)
 
 
 def requeue_unfinished() -> int:

@@ -27,7 +27,7 @@
         <div class="progress" role="progressbar" aria-label="Progreso" id="progress"
              aria-valuenow="{{ conversion.progress }}" aria-valuemin="0" aria-valuemax="100">
           <div class="progress-bar{% if conversion.is_active %} progress-bar-striped progress-bar-animated{% endif %}{% if conversion.status == 'error' %} bg-danger{% elif conversion.status == 'completed' %} bg-success{% endif %}"
-               id="progress-bar" style="width: {{ conversion.progress }}%">{{ conversion.progress }}%</div>
+               id="progress-bar" data-progress="{{ conversion.progress }}">{{ conversion.progress }}%</div>
         </div>
       </dd>
     </dl>
@@ -117,7 +117,7 @@
   <a class="btn btn-outline-secondary" href="{% url 'documents:history' %}">Ver historial</a>
   <a class="btn btn-outline-primary" href="{% url 'documents:upload' %}">Subir otro documento</a>
   <form method="post" action="{% url 'documents:delete' conversion.id %}" class="ms-auto"
-        onsubmit="return confirm('¿Eliminar esta conversión y su archivo? No se puede deshacer.');">
+        data-confirm="¿Eliminar esta conversión y su archivo? No se puede deshacer.">
     {% csrf_token %}
     <button type="submit" class="btn btn-outline-danger">{% if conversion.in_review %}Descartar y eliminar{% else %}Eliminar{% endif %}</button>
   </form>

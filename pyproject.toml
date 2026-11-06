@@ -23,6 +23,7 @@ package = false
 dev = [
     "pytest>=9.2.0",
     "pytest-django>=4.14.0",
+    "pytest-playwright>=0.10.0",
     "ruff>=0.17.3",
 ]
 
@@ -45,5 +46,9 @@ testpaths = ["tests"]
 python_files = ["test_*.py"]
 addopts = "-ra --strict-markers"
 markers = [
-    "e2e: pruebas de extremo a extremo (flujo completo)",
+    "e2e: pruebas de extremo a extremo con navegador real (Playwright)",
+]
+filterwarnings = [
+    # Aviso interno del plugin pytest-base-url (dependencia de pytest-playwright).
+    "ignore:Session-scoped fixtures defined as instance methods",
 ]

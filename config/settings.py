@@ -8,6 +8,7 @@ from pathlib import Path
 
 import environ
 from django.core.exceptions import ImproperlyConfigured
+from django.utils.csp import CSP
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -39,6 +40,21 @@ DEBUG = env.bool("DJANGO_DEBUG", default=False)
 ALLOWED_HOSTS = ["127.0.0.1", "localhost"]
 
 X_FRAME_OPTIONS = "DENY"
+# Content-Security-Policy: solo recursos propios y nada de JavaScript ni estilos en línea.
+# Si alguna vez se colara HTML en una página, el navegador no ejecutaría scripts inyectados
+# ni enviaría datos a otros sitios.
+SECURE_CSP = {
+    "default-src": [CSP.SELF],
+    "script-src": [CSP.SELF],
+    "style-src": [CSP.SELF],
+    "img-src": [CSP.SELF, "data:"],  # Bootstrap usa SVG en data: para iconos de formularios
+    "font-src": [CSP.SELF],
+    "connect-src": [CSP.SELF],
+    "object-src": [CSP.NONE],
+    "base-uri": [CSP.NONE],
+    "form-action": [CSP.SELF],
+    "frame-ancestors": [CSP.NONE],
+}
 SECURE_CONTENT_TYPE_NOSNIFF = True
 SESSION_COOKIE_HTTPONLY = True
 CSRF_COOKIE_SAMESITE = "Strict"
@@ -65,6 +81,7 @@ MIDDLEWARE = [
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
+    "django.middleware.csp.ContentSecurityPolicyMiddleware",
 ]
 
 ROOT_URLCONF = "config.urls"
@@ -134,6 +151,11 @@ STATIC_URL = "static/"
 STATICFILES_DIRS = [BASE_DIR / "static"]
 # Sirve directamente desde static/ sin necesidad de ejecutar collectstatic.
 WHITENOISE_USE_FINDERS = True
+STORAGES = {
+    "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
+    # ?v=<huella del contenido> en las URL: el navegador no usa CSS/JS antiguos tras actualizar.
+    "staticfiles": {"BACKEND": "config.staticfiles.VersionedStaticFilesStorage"},
+}
 
 # --- Mensajes de la interfaz (clases de alerta de Bootstrap) ---------------------------
 MESSAGE_TAGS = {40: "danger"}  # messages.ERROR → alert-danger
@@ -143,6 +165,12 @@ MAX_UPLOAD_SIZE_MB = env.int("DOCSAFE_MAX_UPLOAD_MB", default=20)
 # Archivos mayores a 2,5 MB se escriben en un temporal dentro de var/ (no en la carpeta
 # temporal del sistema), para que todo quede bajo control de la aplicación.
 FILE_UPLOAD_TEMP_DIR = str(UPLOADS_DIR)
+# Corta la subida en cuanto supera el límite (lo que sobra no se escribe en disco).
+FILE_UPLOAD_HANDLERS = [
+    "apps.documents.upload_handlers.SizeLimitUploadHandler",
+    "django.core.files.uploadhandler.MemoryFileUploadHandler",
+    "django.core.files.uploadhandler.TemporaryFileUploadHandler",
+]
 
 # --- Anonimización por reglas (Fase 4) ---------------------------------------------------
 # Por defecto solo se anonimizan fechas de nacimiento; True reemplaza TODAS las fechas.

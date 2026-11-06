@@ -95,6 +95,30 @@ def test_rechaza_archivo_mayor_al_limite(client, settings):
     assert not Conversion.objects.exists()
 
 
+def test_subida_grande_se_corta_sin_dejar_archivos(client, settings, isolated_uploads):
+    """Mayor que el límite y que FILE_UPLOAD_MAX_MEMORY_SIZE: iría a un temporal en disco."""
+    from apps.documents.upload_handlers import SizeLimitUploadHandler
+
+    settings.MAX_UPLOAD_SIZE_MB = 1
+    received = []
+    original = SizeLimitUploadHandler.receive_data_chunk
+
+    def spy(self, raw_data, start):
+        received.append(start + len(raw_data))
+        return original(self, raw_data, start)
+
+    data = files.pdf_bytes() + b"0" * (3 * 1024 * 1024)
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr(SizeLimitUploadHandler, "receive_data_chunk", spy)
+        response = client.post(UPLOAD_URL, {"file": make_file("grande.pdf", data)})
+
+    assert response.status_code == 200
+    assert "tamaño máximo de 1 MB" in response.content.decode()
+    assert not Conversion.objects.exists()
+    assert list(isolated_uploads.iterdir()) == []  # ni el archivo ni el temporal parcial
+    assert max(received) <= 1024 * 1024 + 64 * 1024  # dejó de recibir al pasar el límite
+
+
 def test_rechaza_varios_archivos(client):
     response = client.post(
         UPLOAD_URL,

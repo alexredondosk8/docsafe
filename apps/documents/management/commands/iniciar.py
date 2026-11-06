@@ -23,6 +23,7 @@ from django.conf import settings
 from django.core.management import call_command
 from django.core.management.base import BaseCommand, CommandError
 
+from apps.documents.pipeline import cleanup_orphan_uploads
 from apps.documents.tasks import requeue_unfinished
 
 HOST = "127.0.0.1"
@@ -143,6 +144,7 @@ class Command(BaseCommand):
             )
 
         call_command("migrate", interactive=False, verbosity=0)
+        cleanup_orphan_uploads()
         pending = requeue_unfinished()
         if pending:
             self.stdout.write(f"Se reanudarán {pending} conversiones pendientes.")

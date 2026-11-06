@@ -64,3 +64,16 @@ class FakeLLMServer:
 
     def last_json(self) -> dict:
         return json.loads(self.requests[-1].content)
+
+
+def contract_ai_answer(user_text: str) -> str:
+    """Modelo simulado: devuelve las entidades del contrato de ejemplo que vea en el texto."""
+    candidates = [
+        ("NOMBRE", "Juan Pérez"),
+        ("NOMBRE", "María López"),
+        ("NOMBRE", "Juan Carlos Pérez Gómez"),
+        ("EMPRESA", "Soluciones Andinas S.A.S."),
+        ("NOMBRE", "Bogotá"),  # falso positivo: el usuario lo desmarca
+    ]
+    found = [{"tipo": t, "valor": v} for t, v in candidates if v in user_text]
+    return json.dumps({"entidades": found}, ensure_ascii=False)

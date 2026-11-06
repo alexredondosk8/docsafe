@@ -27,7 +27,13 @@ def upload(request):
     """Pantalla principal: subir UN documento."""
     upload_error = None
     if request.method == "POST":
-        if len(request.FILES.getlist("file")) > 1:
+        uploaded_files = request.FILES.getlist("file")  # lee el cuerpo (y aplica el límite)
+        if getattr(request, "upload_too_large", False):
+            form = UploadForm()
+            upload_error = (
+                f"El archivo supera el tamaño máximo de {settings.MAX_UPLOAD_SIZE_MB} MB."
+            )
+        elif len(uploaded_files) > 1:
             form = UploadForm()
             upload_error = "Sube un solo archivo a la vez."
         else:
@@ -40,7 +46,11 @@ def upload(request):
                     size_bytes=uploaded.size,
                 )
                 conversion.upload.save(uploaded.name, uploaded, save=False)
-                conversion.save()
+                try:
+                    conversion.save()
+                except Exception:
+                    conversion.delete_upload()  # que no quede el documento huérfano en disco
+                    raise
                 enqueue_conversion(conversion.id)
                 logger.info(
                     "Conversión %s creada: tipo=%s tamaño=%d bytes",

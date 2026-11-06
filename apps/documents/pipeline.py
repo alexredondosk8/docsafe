@@ -256,3 +256,29 @@ def expire_stale_reviews() -> int:
     if count:
         logger.info("%d revisiones caducadas: datos originales borrados", count)
     return count
+
+
+def cleanup_orphan_uploads(min_age: timedelta = timedelta(hours=1)) -> int:
+    """Borra de UPLOADS_DIR los archivos que no pertenecen a ninguna conversión.
+
+    Pueden quedar si el proceso se corta a mitad de una subida (incluidos los temporales
+    `*.upload` de Django). Solo borra archivos con más de `min_age` de antigüedad para no
+    tocar una subida en curso. Devuelve cuántos borró; en logs solo el número.
+    """
+    uploads = Path(settings.UPLOADS_DIR)
+    if not uploads.is_dir():
+        return 0
+    in_use = set(Conversion.objects.exclude(upload="").values_list("upload", flat=True))
+    limit = (timezone.now() - min_age).timestamp()
+    count = 0
+    for path in uploads.iterdir():
+        try:
+            if not path.is_file() or path.name in in_use or path.stat().st_mtime > limit:
+                continue
+            path.unlink()
+            count += 1
+        except OSError:  # en uso (Windows) o ya borrado: se intenta en la próxima limpieza
+            continue
+    if count:
+        logger.info("%d archivos subidos sin conversión borrados", count)
+    return count

@@ -34,6 +34,7 @@ def fake(monkeypatch):
     monkeypatch.setattr(iniciar.subprocess, "Popen", fake_popen)
     monkeypatch.setattr(iniciar, "call_command", fake_call_command)
     monkeypatch.setattr(iniciar, "requeue_unfinished", lambda: 2)
+    monkeypatch.setattr(iniciar, "cleanup_orphan_uploads", lambda: calls.setdefault("cleanup", 1))
     monkeypatch.setattr(iniciar, "find_running_workers", lambda base: [])
     monkeypatch.setattr(iniciar, "port_in_use", lambda port: False)
     monkeypatch.setattr(iniciar, "stop_process_tree", lambda process: process.terminate())
@@ -43,6 +44,7 @@ def fake(monkeypatch):
 def test_inicia_procesador_y_servidor_local(fake, capsys):
     call_command("iniciar")
     assert "Se reanudarán 2 conversiones pendientes" in capsys.readouterr().out
+    assert fake.get("cleanup") == 1  # limpia archivos huérfanos al arrancar
 
     names = [c[0] for c in fake["commands"]]
     assert names == ["migrate", "runserver"]

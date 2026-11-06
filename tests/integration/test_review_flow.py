@@ -12,7 +12,7 @@ from django.utils import timezone
 
 from apps.documents import pipeline
 from apps.documents.models import Conversion
-from tests.llm_fakes import FakeLLMServer
+from tests.llm_fakes import FakeLLMServer, contract_ai_answer
 
 pytestmark = pytest.mark.django_db
 
@@ -20,24 +20,11 @@ FIXTURES = Path(__file__).resolve().parents[1] / "fixtures"
 UPLOAD_URL = reverse("documents:upload")
 
 
-def ai_answer(user_text: str) -> str:
-    """Modelo simulado: devuelve las entidades del contrato de ejemplo que vea en el texto."""
-    candidates = [
-        ("NOMBRE", "Juan Pérez"),
-        ("NOMBRE", "María López"),
-        ("NOMBRE", "Juan Carlos Pérez Gómez"),
-        ("EMPRESA", "Soluciones Andinas S.A.S."),
-        ("NOMBRE", "Bogotá"),  # falso positivo: el usuario lo desmarca
-    ]
-    found = [{"tipo": t, "valor": v} for t, v in candidates if v in user_text]
-    return json.dumps({"entidades": found}, ensure_ascii=False)
-
-
 @pytest.fixture
 def fake_ai(settings, monkeypatch):
     settings.LLM_MODEL = "modelo-prueba"
     settings.LLM_ANONYMIZATION_ENABLED = True
-    server = FakeLLMServer(chat_content=ai_answer)
+    server = FakeLLMServer(chat_content=contract_ai_answer)
     monkeypatch.setattr(
         pipeline,
         "get_provider",
@@ -309,7 +296,7 @@ def test_tarea_periodica_caduca_revisiones(analyze, fake_ai, settings):
     Conversion.objects.filter(pk=conversion.pk).update(
         updated_at=timezone.now() - timedelta(hours=25)
     )
-    tasks.expire_reviews()
+    tasks.maintenance()
     conversion.refresh_from_db()
     assert conversion.status == Conversion.Status.ERROR
     assert conversion.review_text == ""
@@ -322,18 +309,19 @@ def test_tarea_periodica_no_propaga_errores(monkeypatch, caplog):
         raise RuntimeError("texto secreto")
 
     monkeypatch.setattr(pipeline, "expire_stale_reviews", boom)
-    tasks.expire_reviews()
+    tasks.maintenance()
     assert "RuntimeError" in caplog.text
     assert "texto secreto" not in caplog.text
 
 
-def test_caducidad_programada_en_django_q():
+def test_mantenimiento_programado_en_django_q():
     from django_q.models import Schedule
 
     from apps.documents import tasks
 
-    schedule = Schedule.objects.get(name="docsafe-caducar-revisiones")
-    assert schedule.func == tasks.EXPIRE_REVIEWS_PATH
+    assert not Schedule.objects.filter(name="docsafe-caducar-revisiones").exists()
+    schedule = Schedule.objects.get(name="docsafe-mantenimiento")
+    assert schedule.func == tasks.MAINTENANCE_PATH
     assert schedule.schedule_type == Schedule.MINUTES
     assert schedule.minutes == 15
     assert schedule.repeats == -1

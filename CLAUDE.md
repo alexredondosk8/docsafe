@@ -69,7 +69,8 @@ nombre de empresa, NIT. Se reemplazan por etiquetas consistentes dentro del docu
     `markdown` (solo el resultado anonimizado), `upload` temporal en `var/uploads`.
     `UploadsStorage` lee `settings.UPLOADS_DIR` en cada uso (las pruebas lo aíslan por test).
 17. **Un archivo por subida** validado en navegador (`static/js/upload.js`) y en servidor.
-    El tamaño se valida tras recibir el archivo; cortar la subida antes queda para la Fase 7.
+    `SizeLimitUploadHandler` (primero en `FILE_UPLOAD_HANDLERS`) corta la recepción al superar
+    el límite: lo que sobra no se escribe en disco (Fase 7).
 18. Rutas: `/` subir, `/historial/`, `/conversiones/<uuid>/`, `/conversiones/<uuid>/eliminar/` (POST).
 
 ### Conversión a Markdown (Fase 2) — evaluación y elección
@@ -229,16 +230,40 @@ confirmar, al descartar o a las 24 h); si la IA falla, **se sigue solo con regla
   `LLM_REASONING_EFFORT`; `DOCSAFE_TASK_TIMEOUT` sube a 14400 s.
 - Verificado con Ollama real (qwen3:8b): contrato PDF/DOCX y XLSX de ejemplo sin fugas, ~25-35 s cada
   uno; texto libre sin pistas: detecta personas, dirección libre y empresas sin sufijo.
-- **Caducidad periódica**: tarea `apps.documents.tasks.expire_reviews` programada cada 15 min en
-  django-q (`Schedule` «docsafe-caducar-revisiones», creado por la migración 0005, así funciona con
-  `iniciar` y con `qcluster` aparte). Captura todos los errores. Sigue también al abrir detalle/historial.
+- **Caducidad periódica**: tarea programada cada 15 min en django-q (desde la Fase 7 es
+  `tasks.maintenance`, `Schedule` «docsafe-mantenimiento», migración 0006; funciona con `iniciar` y
+  con `qcluster` aparte). Captura todos los errores. Sigue también al abrir detalle/historial.
 - Verificado en el navegador (conversión creada con IA simulada, sin cola): desmarcar, añadir (lo del
   usuario sustituye a la detección de la IA), vista previa, confirmar (borra texto original y valores)
   y pantalla de 375 px sin desbordes (la tabla se desplaza dentro de su caja; `.review-value` con
   ancho mínimo; título y estado pasan a otra línea). El botón «Confirmar» usa `confirm()` del navegador.
-- Pendiente para la Fase 7: los CSS/JS no llevan versión en la URL; tras una actualización el navegador
-  puede usar la copia en caché (Ctrl+F5).
 - 435 pruebas pasan al cerrar la fase.
+
+### Endurecimiento, e2e y README (Fase 7)
+- **Archivos huérfanos**: `pipeline.cleanup_orphan_uploads()` borra de `UPLOADS_DIR` lo que no pertenece
+  a ninguna conversión y tiene > 1 h (incluye temporales `*.upload`). Se ejecuta al arrancar `iniciar`
+  y en `tasks.maintenance` (cada 15 min). La subida borra el archivo si falla el guardado en la BD
+  (así quedaron 2 PDF del usuario en la Fase 4, ya borrados con su permiso).
+- **Subidas grandes**: ver decisión 17. La vista lee `request.FILES` antes de mirar
+  `request.upload_too_large` (el cuerpo se analiza de forma perezosa).
+- **CSS/JS versionados**: `config/staticfiles.VersionedStaticFilesStorage` añade `?v=<sha256[:12]>` a
+  cada `{% static %}` (clave de caché: ruta+mtime+tamaño). Sin `collectstatic`.
+- **Content-Security-Policy** (nativa de Django 6, `SECURE_CSP`): solo `'self'`, `img-src` admite `data:`
+  (SVG de Bootstrap), `object-src`/`base-uri` `'none'`, `frame-ancestors 'none'`, sin `unsafe-inline`.
+  Nada de JS ni estilos en línea: `static/js/app.js` (en todas las páginas) aplica `data-confirm`
+  (botones y formularios) y `data-progress` (ancho de las barras). Una prueba recorre las páginas
+  buscando `on*=`, `style=` y `<script>` sin `src`.
+- **e2e con Playwright** (`pytest-playwright`, dev): `tests/e2e/` con el `live_server` de pytest-django,
+  django-q síncrono y LLM simulado (`tests.llm_fakes.contract_ai_answer`). Cubre subir → desmarcar →
+  añadir → confirmar (aviso) → descargar y leer el .md; cancelar el aviso; eliminar desde el historial;
+  validación del navegador; recarga automática del estado; sin errores de consola/CSP.
+  `tests/conftest.py` las marca `e2e` y las pone **al final** (Playwright deja un bucle asyncio activo;
+  `DJANGO_ALLOW_ASYNC_UNSAFE` solo durante las e2e). Sin Chromium se omiten.
+- **README** completo (uv, Ollama, `.env`, privacidad, limitaciones, solución de problemas).
+  **Verificado en WSL Ubuntu 26.04** desde cero: instalación de uv, `uv sync` (descarga Python 3.12),
+  `.env`, `iniciar`, flujo real subir→revisar→confirmar→descargar sin fugas, segundo `iniciar`
+  rechazado, Ctrl+C sin procesos restantes, 447 pruebas (e2e omitidas sin Chromium).
+  En Linux `qcluster` usa fork: los hijos tienen `manage.py qcluster` en la línea de órdenes.
 
 ## Arquitectura (carpetas)
 ```
@@ -259,7 +284,8 @@ uv sync                                   # instalar dependencias
 uv run python manage.py iniciar           # uso normal: migra + worker + servidor (127.0.0.1:8000)
 uv run python manage.py runserver 127.0.0.1:8000   # desarrollo, junto con:
 uv run python manage.py qcluster                   # procesador en segundo plano
-uv run pytest                             # pruebas
+uv run pytest                             # pruebas (e2e al final; -m e2e / -m "not e2e")
+uv run playwright install chromium        # una vez, para las pruebas e2e
 uv run ruff check . ; uv run ruff format .
 ```
 
@@ -271,7 +297,7 @@ uv run ruff check . ; uv run ruff format .
 4. Anonimización determinista (regex) con pruebas. ✅
 5. Cliente LLM, página de Configuración, probar conexión, aviso de privacidad. ✅
 6. Anonimización con LLM, fragmentación, etiquetas consistentes, pantalla de revisión. ✅
-7. Endurecimiento, pruebas de extremo a extremo, README completo (Windows/Linux + Ollama).
+7. Endurecimiento, pruebas de extremo a extremo, README completo (Windows/Linux + Ollama). ✅
 
 ## Preguntas abiertas
 - (Resuelta en Fase 6) Revisión: desmarcar y añadir; originales temporales hasta confirmar (24 h).
