@@ -129,7 +129,15 @@ Detalles:
   en 127.0.0.1 sin recarga; al salir detiene el worker. Desarrollo: runserver + qcluster en 2 terminales.
 - `iniciar` se niega a arrancar si ya hay un `qcluster` de este proyecto en marcha (psutil): dos
   procesadores comparten la cola ORM y uno con código antiguo procesaría documentos con reglas
-  viejas (ocurrió en la verificación de la Fase 4).
+  viejas (ocurrió en la verificación de la Fase 4). También detecta procesadores **huérfanos**: si se
+  cierra el proceso principal, sus hijos de `multiprocessing` (`--multiprocessing-fork`, sin `manage.py`
+  en la línea de órdenes) siguen atendiendo la cola; se reconocen por carpeta = proyecto y
+  `DJANGO_SETTINGS_MODULE` en su entorno (ocurrió en la Fase 6). Solo informa los PID raíz y el mensaje
+  indica cómo cerrarlos (`taskkill /PID n /T /F` en Windows, `kill n` en Linux).
+- Causa de esos huérfanos: al salir, `iniciar` cerraba solo el proceso lanzado (el lanzador de `.venv`)
+  y los hijos de `multiprocessing` (intérprete base, fuera del alcance del lanzador) sobrevivían.
+  Ahora `stop_process_tree` espera 10 s a que qcluster se cierre solo y luego termina todo el árbol
+  con psutil. Prueba con procesos reales (falla con el método antiguo).
 - `iniciar` también se niega si el puerto ya tiene un servidor escuchando (`port_in_use`): en Windows
   `runserver` abre un puerto ocupado sin avisar (SO_REUSEADDR) y las peticiones siguen llegando al
   servidor antiguo (le ocurrió al usuario tras la Fase 5). En la terminal de Windows, `runserver` se
@@ -191,7 +199,7 @@ Paquete `apps/anonymization/` (Python puro):
   sin red). Verificado contra Ollama local real (qwen3:4b): ~1–10 s por respuesta; los modelos qwen3
   "piensan" antes de responder (considerar en la Fase 6).
 
-### Anonimización con IA y revisión (Fase 6 — EN CURSO)
+### Anonimización con IA y revisión (Fase 6)
 Decisiones del usuario: la revisión permite **desmarcar y añadir** reemplazos; el texto original y
 los valores reales se guardan **solo mientras la conversión está «En revisión»** (se borran al
 confirmar, al descartar o a las 24 h); si la IA falla, **se sigue solo con reglas** y se avisa.
@@ -221,11 +229,16 @@ confirmar, al descartar o a las 24 h); si la IA falla, **se sigue solo con regla
   `LLM_REASONING_EFFORT`; `DOCSAFE_TASK_TIMEOUT` sube a 14400 s.
 - Verificado con Ollama real (qwen3:8b): contrato PDF/DOCX y XLSX de ejemplo sin fugas, ~25-35 s cada
   uno; texto libre sin pistas: detecta personas, dirección libre y empresas sin sufijo.
-- Migración 0004 ya aplicada a `var/db.sqlite3`. 427 pruebas pasan.
-- **PENDIENTE para cerrar la Fase 6**: verificar la pantalla de revisión en el navegador (crear una
-  conversión «En revisión» con el contrato de ejemplo sin pasar por la cola, en `runserver` aparte),
-  revisar el diseño en pantalla estrecha, programar la caducidad también con una tarea periódica de
-  django-q (hoy solo al abrir detalle/historial), y commit final de la fase.
+- **Caducidad periódica**: tarea `apps.documents.tasks.expire_reviews` programada cada 15 min en
+  django-q (`Schedule` «docsafe-caducar-revisiones», creado por la migración 0005, así funciona con
+  `iniciar` y con `qcluster` aparte). Captura todos los errores. Sigue también al abrir detalle/historial.
+- Verificado en el navegador (conversión creada con IA simulada, sin cola): desmarcar, añadir (lo del
+  usuario sustituye a la detección de la IA), vista previa, confirmar (borra texto original y valores)
+  y pantalla de 375 px sin desbordes (la tabla se desplaza dentro de su caja; `.review-value` con
+  ancho mínimo; título y estado pasan a otra línea). El botón «Confirmar» usa `confirm()` del navegador.
+- Pendiente para la Fase 7: los CSS/JS no llevan versión en la URL; tras una actualización el navegador
+  puede usar la copia en caché (Ctrl+F5).
+- 435 pruebas pasan al cerrar la fase.
 
 ## Arquitectura (carpetas)
 ```
@@ -257,7 +270,7 @@ uv run ruff check . ; uv run ruff format .
 3. Segundo plano (django-q2), estados y progreso en la UI. ✅
 4. Anonimización determinista (regex) con pruebas. ✅
 5. Cliente LLM, página de Configuración, probar conexión, aviso de privacidad. ✅
-6. Anonimización con LLM, fragmentación, etiquetas consistentes, pantalla de revisión. 🔶 en curso
+6. Anonimización con LLM, fragmentación, etiquetas consistentes, pantalla de revisión. ✅
 7. Endurecimiento, pruebas de extremo a extremo, README completo (Windows/Linux + Ollama).
 
 ## Preguntas abiertas

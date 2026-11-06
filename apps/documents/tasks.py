@@ -1,16 +1,34 @@
 """Tareas en segundo plano (django-q2)."""
 
+import logging
+
 from django.db import transaction
 from django_q.tasks import async_task
 
 from . import pipeline
 
+logger = logging.getLogger(__name__)
+
 TASK_PATH = "apps.documents.tasks.process_conversion"
+# Tarea periódica (la crea la migración 0005): descarta revisiones caducadas aunque nadie
+# abra el detalle ni el historial.
+EXPIRE_REVIEWS_PATH = "apps.documents.tasks.expire_reviews"
 
 
 def process_conversion(conversion_id: str) -> None:
     """Punto de entrada de la tarea. Recibe solo el id; no devuelve nada."""
     pipeline.process(conversion_id)
+
+
+def expire_reviews() -> None:
+    """Tarea periódica: borra los datos originales de las revisiones caducadas.
+
+    Captura cualquier error para que django-q no guarde trazas; no devuelve nada.
+    """
+    try:
+        pipeline.expire_stale_reviews()
+    except Exception as exc:  # noqa: BLE001
+        logger.error("Error al caducar revisiones (%s)", type(exc).__name__)
 
 
 def requeue_unfinished() -> int:

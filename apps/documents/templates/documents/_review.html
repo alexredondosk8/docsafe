@@ -26,7 +26,7 @@
     {% if review_entities %}
     <div class="table-responsive">
       <table class="table table-sm align-middle mb-0">
-        <thead>
+        <thead class="text-nowrap">
           <tr>
             <th scope="col" class="text-center">Reemplazar</th>
             <th scope="col">Valor original</th>
@@ -45,13 +45,13 @@
                      {% if row.entity.enabled %}checked{% endif %}
                      aria-label="Reemplazar {{ row.entity.values.0 }}">
             </td>
-            <td class="text-break">
+            <td class="text-break review-value">
               <label for="entidad-{{ row.entity.key }}">
                 {% for value in row.entity.values %}<span class="d-block">{{ value }}</span>{% endfor %}
               </label>
             </td>
             <td>{{ row.entity.description }}</td>
-            <td>{% if row.label %}<code>{{ row.label }}</code>{% else %}<span class="small">no se reemplaza</span>{% endif %}</td>
+            <td class="text-nowrap">{% if row.label %}<code>{{ row.label }}</code>{% else %}<span class="small">no se reemplaza</span>{% endif %}</td>
             <td class="text-end">{{ row.entity.count }}</td>
             <td class="small">{{ row.entity.source_labels|join:", " }}</td>
           </tr>

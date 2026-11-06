@@ -11,3 +11,8 @@ body {
   font-size: 0.875rem;
   background-color: var(--bs-body-bg);
 }
+
+/* Revisión: el valor original no se encoge tanto que quede una palabra por línea. */
+.review-value {
+  min-width: 11rem;
+}

@@ -301,6 +301,44 @@ def test_revision_reciente_no_caduca(analyze, fake_ai):
     assert conversion.status == Conversion.Status.REVIEW
 
 
+def test_tarea_periodica_caduca_revisiones(analyze, fake_ai, settings):
+    from apps.documents import tasks
+
+    settings.REVIEW_EXPIRY_HOURS = 24
+    conversion = analyze()
+    Conversion.objects.filter(pk=conversion.pk).update(
+        updated_at=timezone.now() - timedelta(hours=25)
+    )
+    tasks.expire_reviews()
+    conversion.refresh_from_db()
+    assert conversion.status == Conversion.Status.ERROR
+    assert conversion.review_text == ""
+
+
+def test_tarea_periodica_no_propaga_errores(monkeypatch, caplog):
+    from apps.documents import tasks
+
+    def boom():
+        raise RuntimeError("texto secreto")
+
+    monkeypatch.setattr(pipeline, "expire_stale_reviews", boom)
+    tasks.expire_reviews()
+    assert "RuntimeError" in caplog.text
+    assert "texto secreto" not in caplog.text
+
+
+def test_caducidad_programada_en_django_q():
+    from django_q.models import Schedule
+
+    from apps.documents import tasks
+
+    schedule = Schedule.objects.get(name="docsafe-caducar-revisiones")
+    assert schedule.func == tasks.EXPIRE_REVIEWS_PATH
+    assert schedule.schedule_type == Schedule.MINUTES
+    assert schedule.minutes == 15
+    assert schedule.repeats == -1
+
+
 def test_conversion_en_revision_no_se_reprocesa(analyze, fake_ai, monkeypatch):
     conversion = analyze()
     monkeypatch.setattr(pipeline, "convert", lambda *a: pytest.fail("no debe convertir"))

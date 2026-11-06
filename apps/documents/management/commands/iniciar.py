@@ -11,6 +11,7 @@ Para desarrollo con recarga automática, usar dos terminales:
     uv run python manage.py qcluster
 """
 
+import contextlib
 import os
 import socket
 import subprocess
@@ -27,22 +28,46 @@ from apps.documents.tasks import requeue_unfinished
 HOST = "127.0.0.1"
 
 
+def _same_dir(path, base: str) -> bool:
+    return os.path.normcase(str(Path(path).resolve())) == base
+
+
+def _is_project_worker(proc, base: str) -> bool:
+    """True si el proceso es un procesador (qcluster) de este proyecto o uno de sus hijos."""
+    cmdline = proc.info["cmdline"] or []
+    if "qcluster" in cmdline and any("manage.py" in a for a in cmdline):
+        manage = next(a for a in cmdline if "manage.py" in a)
+        path = Path(manage) if os.path.isabs(manage) else Path(proc.cwd()) / manage
+        return _same_dir(path.parent, base)
+    if "--multiprocessing-fork" in cmdline:
+        # Hijos del procesador (guardián, worker, monitor…). Si el proceso principal se cerró
+        # sin detenerlos, quedan huérfanos, siguen atendiendo la cola con el código antiguo y
+        # su línea de órdenes ya no menciona manage.py: se reconocen por su carpeta y entorno.
+        return _same_dir(proc.cwd(), base) and "DJANGO_SETTINGS_MODULE" in proc.environ()
+    return False
+
+
 def find_running_workers(base_dir: Path) -> list[int]:
-    """PIDs de procesos `manage.py qcluster` de este proyecto que estén en marcha."""
+    """PIDs de los procesadores de este proyecto en marcha, incluidos los huérfanos.
+
+    Solo devuelve los procesos raíz: sus hijos se cierran con ellos.
+    """
     base = os.path.normcase(str(Path(base_dir).resolve()))
-    pids = []
-    for proc in psutil.process_iter(["pid", "cmdline"]):
+    found: dict[int, int | None] = {}
+    for proc in psutil.process_iter(["pid", "ppid", "cmdline"]):
         try:
-            cmdline = proc.info["cmdline"] or []
-            if "qcluster" not in cmdline or not any("manage.py" in a for a in cmdline):
-                continue
-            manage = next(a for a in cmdline if "manage.py" in a)
-            path = Path(manage) if os.path.isabs(manage) else Path(proc.cwd()) / manage
-            if os.path.normcase(str(path.resolve().parent)) == base:
-                pids.append(proc.info["pid"])
+            if _is_project_worker(proc, base):
+                found[proc.info["pid"]] = proc.info.get("ppid")
         except (psutil.Error, OSError, StopIteration):
             continue
-    return pids
+    return sorted(pid for pid, ppid in found.items() if ppid not in found)
+
+
+def stop_command(pids: list[int]) -> str:
+    """Orden para cerrar a mano los procesadores (y sus hijos) que no tienen ventana."""
+    if sys.platform == "win32":
+        return " ; ".join(f"taskkill /PID {pid} /T /F" for pid in pids)
+    return "kill " + " ".join(map(str, pids))
 
 
 def port_in_use(port: int) -> bool:
@@ -58,6 +83,41 @@ def port_in_use(port: int) -> bool:
         return False
 
 
+def stop_process_tree(process, grace: float = 10) -> None:
+    """Detiene el procesador y TODOS sus procesos hijos.
+
+    Cerrar solo el proceso lanzado no basta: en Windows es el lanzador de `.venv` y, si muere
+    antes de que qcluster cierre a sus hijos, el guardián y los workers quedan huérfanos y
+    siguen atendiendo la cola con el código antiguo (ocurrió en la Fase 6).
+    Primero espera `grace` segundos a que se cierre solo (Ctrl+C también le llega) y luego
+    termina a la fuerza lo que quede.
+    """
+    try:
+        root = psutil.Process(process.pid)
+        tree = [root, *root.children(recursive=True)]
+    except psutil.Error:
+        tree = []
+    with contextlib.suppress(subprocess.TimeoutExpired):
+        process.wait(timeout=grace)
+    # Hijos creados después (p. ej. workers reiniciados) también se incluyen.
+    for proc in list(tree):
+        try:
+            tree.extend(c for c in proc.children(recursive=True) if c not in tree)
+        except psutil.Error:
+            continue
+    for proc in tree:
+        try:
+            proc.terminate()
+        except psutil.Error:
+            continue
+    _, alive = psutil.wait_procs(tree, timeout=5)
+    for proc in alive:
+        try:
+            proc.kill()
+        except psutil.Error:
+            continue
+
+
 class Command(BaseCommand):
     help = "Inicia el procesador en segundo plano y el servidor web local (127.0.0.1)."
 
@@ -71,7 +131,9 @@ class Command(BaseCommand):
             raise CommandError(
                 "Ya hay un procesador de DocSafe en marcha (PID "
                 + ", ".join(map(str, running))
-                + "). Ciérralo (Ctrl+C en su ventana) antes de iniciar otro."
+                + "). Ciérralo con Ctrl+C en su ventana antes de iniciar otro. Si no tiene "
+                "ventana (quedó abierto de una ejecución anterior), ciérralo con: "
+                + stop_command(running)
             )
         if port_in_use(port):
             raise CommandError(
@@ -97,8 +159,4 @@ class Command(BaseCommand):
             pass
         finally:
             self.stdout.write("Deteniendo el procesador en segundo plano…")
-            worker.terminate()
-            try:
-                worker.wait(timeout=15)
-            except subprocess.TimeoutExpired:
-                worker.kill()
+            stop_process_tree(worker)
