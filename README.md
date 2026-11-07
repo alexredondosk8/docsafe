@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # DocSafe — Anonimizador local de documentos a Markdown
 
 DocSafe convierte documentos **PDF** (con texto), **Word (.docx)** y **Excel (.xlsx)** a
@@ -196,3 +197,7 @@ personal; si algún día se distribuye DocSafe, hay que revisar esta condición.
 
 ## Más información
 [CLAUDE.md](CLAUDE.md) describe la arquitectura, las decisiones técnicas y el plan por fases.
+=======
+# docsafe
+conversor a markdown seguros, anonimizando documentos del trabajo
+>>>>>>> 173f8451c5ccf8af542a83630be17360afd1b67f
