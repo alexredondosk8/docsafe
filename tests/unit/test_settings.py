@@ -57,6 +57,37 @@ def test_falla_si_no_hay_clave_secreta(tmp_path):
     assert "DJANGO_SECRET_KEY" in result.stderr
 
 
+def test_falla_si_la_clave_secreta_esta_vacia(tmp_path):
+    result = _import_settings(tmp_path, DJANGO_SECRET_KEY="  ")
+    assert result.returncode != 0
+    assert "Falta DJANGO_SECRET_KEY" in result.stderr
+
+
+def test_falla_con_la_clave_de_ejemplo(tmp_path):
+    result = _import_settings(tmp_path, DJANGO_SECRET_KEY="cambia-esta-clave")
+    assert result.returncode != 0
+    assert "valor de ejemplo" in result.stderr
+
+
+def test_env_example_sin_valores_secretos():
+    """La plantilla solo lista los nombres de las variables secretas, sin valores."""
+    lines = (BASE_DIR / ".env.example").read_text(encoding="utf-8").splitlines()
+    values = dict(line.split("=", 1) for line in lines if line and not line.startswith("#"))
+    assert values["DJANGO_SECRET_KEY"] == ""
+    assert values["LLM_API_KEY"] == ""
+
+
+def test_env_no_versionado():
+    tracked = subprocess.run(  # noqa: S603
+        ["git", "ls-files", ".env"],  # noqa: S607
+        cwd=BASE_DIR,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert tracked.stdout.strip() == ""
+
+
 def test_falla_con_tipo_de_regla_desconocido(tmp_path):
     result = _import_settings(
         tmp_path, DJANGO_SECRET_KEY="x", DOCSAFE_REGLAS_DESACTIVADAS="CORREO,INVENTADO"

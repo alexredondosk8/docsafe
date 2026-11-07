@@ -28,10 +28,15 @@ for _dir in (VAR_DIR, UPLOADS_DIR, LOGS_DIR, STATIC_ROOT):
     _dir.mkdir(parents=True, exist_ok=True)
 
 # --- Seguridad --------------------------------------------------------------------------
-SECRET_KEY = env("DJANGO_SECRET_KEY", default="")
+SECRET_KEY = env("DJANGO_SECRET_KEY", default="").strip()
 if not SECRET_KEY:
     raise ImproperlyConfigured(
         "Falta DJANGO_SECRET_KEY. Copia .env.example a .env y define una clave secreta."
+    )
+# Valor de ejemplo de versiones anteriores de .env.example: es público, no sirve como clave.
+if SECRET_KEY == "cambia-esta-clave":  # noqa: S105 (se compara, no se usa)
+    raise ImproperlyConfigured(
+        "DJANGO_SECRET_KEY tiene el valor de ejemplo. Genera una clave propia (ver README)."
     )
 
 DEBUG = env.bool("DJANGO_DEBUG", default=False)
