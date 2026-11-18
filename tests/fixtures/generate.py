@@ -221,6 +221,31 @@ def make_scanned_pdf(path: Path) -> None:
     doc.save(path)
 
 
+def _scan_page(target: pymupdf.Document, source_page: pymupdf.Page, dpi: int = 200) -> None:
+    """Añade a ``target`` una «fotocopia» de la página: solo imagen en grises, sin texto."""
+    pix = source_page.get_pixmap(dpi=dpi, colorspace=pymupdf.csGRAY)
+    page = target.new_page(width=source_page.rect.width, height=source_page.rect.height)
+    page.insert_image(page.rect, stream=pix.tobytes("jpg", jpg_quality=80))
+
+
+def make_scanned_contract_pdf(path: Path, source: Path) -> None:
+    """El contrato de ejemplo escaneado (Fase 8, OCR): mismas personas y datos, sin texto."""
+    src = pymupdf.open(source)
+    doc = pymupdf.open()
+    for page in src:
+        _scan_page(doc, page)
+    doc.save(path, garbage=4, deflate=True)
+
+
+def make_mixed_ocr_pdf(path: Path, source: Path) -> None:
+    """Página 1 con texto + página 2 escaneada (anexo con nombres en una tabla)."""
+    src = pymupdf.open(source)
+    doc = pymupdf.open()
+    doc.insert_pdf(src, from_page=0, to_page=0)
+    _scan_page(doc, src[1])
+    doc.save(path, garbage=4, deflate=True)
+
+
 def make_encrypted_pdf(path: Path) -> None:
     doc = _html_to_pdf("<p>Documento protegido.</p>")
     doc.save(
@@ -238,6 +263,8 @@ def main() -> None:
     make_scanned_pdf(HERE / "escaneado.pdf")
     make_mixed_pdf(HERE / "mixto.pdf")
     make_encrypted_pdf(HERE / "protegido.pdf")
+    make_scanned_contract_pdf(HERE / "contrato_escaneado.pdf", HERE / "contrato.pdf")
+    make_mixed_ocr_pdf(HERE / "mixto_ocr.pdf", HERE / "contrato.pdf")
     print("Documentos de ejemplo generados en", HERE)
 
 

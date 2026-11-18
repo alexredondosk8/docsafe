@@ -86,7 +86,9 @@ def test_archivo_subido_se_borra_al_terminar(upload):
 def test_avisos_se_guardan(upload):
     conversion = upload("mixto.pdf")
     assert conversion.status == Conversion.Status.COMPLETED
-    assert "Se omitieron 1 de 2 páginas sin texto (posiblemente escaneadas)." in conversion.warnings
+    assert any(
+        w.startswith("Se omitieron 1 de 2 páginas escaneadas porque") for w in conversion.warnings
+    )
 
 
 @pytest.mark.parametrize(
@@ -121,7 +123,7 @@ def _pending(tmp_name="x.docx") -> Conversion:
 
 
 def test_error_inesperado_muestra_mensaje_generico_sin_filtrar_datos(monkeypatch, caplog):
-    def boom(path, file_type):
+    def boom(path, file_type, **kwargs):
         raise RuntimeError("texto del documento: Juan Pérez C.C. 1.020.304.050")
 
     monkeypatch.setattr(pipeline, "convert", boom)
@@ -140,7 +142,7 @@ def test_error_inesperado_muestra_mensaje_generico_sin_filtrar_datos(monkeypatch
 
 
 def test_eliminada_durante_el_procesamiento_no_se_recrea(monkeypatch):
-    def convert_and_delete(path, file_type):
+    def convert_and_delete(path, file_type, **kwargs):
         Conversion.objects.filter(file_type="docx").delete()
         return ConversionResult(markdown="# Hola\n")
 
@@ -154,7 +156,7 @@ def test_eliminada_durante_el_procesamiento_no_se_recrea(monkeypatch):
 
 
 def test_conversion_terminada_no_se_reprocesa(monkeypatch):
-    monkeypatch.setattr(pipeline, "convert", lambda *a: pytest.fail("no debe convertir"))
+    monkeypatch.setattr(pipeline, "convert", lambda *a, **k: pytest.fail("no debe convertir"))
     conversion = Conversion.objects.create(
         original_filename="a.pdf", file_type="pdf", size_bytes=1, status="completed"
     )
@@ -175,7 +177,7 @@ def test_archivo_desaparecido_da_error():
 
 def test_reanuda_conversion_interrumpida(monkeypatch):
     """Si el procesador se cayó a mitad, al reintentar la tarea se procesa de nuevo."""
-    monkeypatch.setattr(pipeline, "convert", lambda *a: ConversionResult(markdown="# Ok\n"))
+    monkeypatch.setattr(pipeline, "convert", lambda *a, **k: ConversionResult(markdown="# Ok\n"))
     conversion = _pending()
     Conversion.objects.filter(pk=conversion.pk).update(status="converting", progress=10)
 
@@ -188,7 +190,7 @@ def test_reanuda_conversion_interrumpida(monkeypatch):
 def test_reencola_conversiones_sin_terminar(monkeypatch):
     from apps.documents import tasks
 
-    monkeypatch.setattr(pipeline, "convert", lambda *a: ConversionResult(markdown="# Ok\n"))
+    monkeypatch.setattr(pipeline, "convert", lambda *a, **k: ConversionResult(markdown="# Ok\n"))
     pending = _pending("a.docx")
     Conversion.objects.create(
         original_filename="b.pdf", file_type="pdf", size_bytes=1, status="completed"
@@ -282,7 +284,7 @@ def test_tipos_desactivados_desde_settings(settings, upload):
 
 def test_todas_las_fechas_desde_settings(settings, monkeypatch):
     monkeypatch.setattr(
-        pipeline, "convert", lambda *a: ConversionResult(markdown="Firmado el 15/03/2024.\n")
+        pipeline, "convert", lambda *a, **k: ConversionResult(markdown="Firmado el 15/03/2024.\n")
     )
     conversion = _pending()
 

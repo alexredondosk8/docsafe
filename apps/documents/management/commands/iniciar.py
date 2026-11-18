@@ -23,6 +23,7 @@ from django.conf import settings
 from django.core.management import call_command
 from django.core.management.base import BaseCommand, CommandError
 
+from apps.conversion.ocr import OcrUnavailable, download_model, model_ready
 from apps.documents.pipeline import cleanup_orphan_uploads
 from apps.documents.tasks import requeue_unfinished
 
@@ -125,6 +126,22 @@ class Command(BaseCommand):
     def add_arguments(self, parser):
         parser.add_argument("--puerto", type=int, default=8000, help="puerto (por defecto 8000)")
 
+    def prepare_ocr(self) -> None:
+        """Descarga el modelo de OCR si falta. Sin internet no es grave: se avisa y se sigue."""
+        if not settings.OCR_ENABLED or model_ready(settings.OCR_MODELS_DIR):
+            return
+        self.stdout.write("Descargando el modelo de OCR para PDF escaneados (~8 MB, una vez)…")
+        try:
+            download_model(settings.OCR_MODELS_DIR)
+            self.stdout.write(self.style.SUCCESS("Modelo de OCR listo."))
+        except OcrUnavailable as exc:
+            self.stdout.write(
+                self.style.WARNING(
+                    f"{exc} Los PDF escaneados no se podrán leer hasta que ejecutes: "
+                    "uv run python manage.py preparar_ocr"
+                )
+            )
+
     def handle(self, *args, **options):
         port = options["puerto"]
         running = find_running_workers(settings.BASE_DIR)
@@ -145,6 +162,7 @@ class Command(BaseCommand):
 
         call_command("migrate", interactive=False, verbosity=0)
         cleanup_orphan_uploads()
+        self.prepare_ocr()
         pending = requeue_unfinished()
         if pending:
             self.stdout.write(f"Se reanudarán {pending} conversiones pendientes.")

@@ -15,3 +15,5 @@ class ConversionResult:
     markdown: str
     # Avisos para el usuario (p. ej. páginas omitidas). Sin contenido del documento.
     warnings: list[str] = field(default_factory=list)
+    # Páginas cuyo texto se obtuvo con OCR (0 si ninguna).
+    ocr_pages: int = 0

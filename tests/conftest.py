@@ -17,6 +17,17 @@ def isolated_uploads(settings, tmp_path):
     return uploads
 
 
+@pytest.fixture(autouse=True)
+def no_model_downloads(monkeypatch):
+    """Ninguna prueba descarga modelos de internet (se simula donde haga falta)."""
+    from apps.conversion import ocr
+
+    def blocked(*args, **kwargs):
+        raise OSError("descargas bloqueadas en las pruebas")
+
+    monkeypatch.setattr(ocr.urllib.request, "urlopen", blocked)
+
+
 def pytest_collection_modifyitems(config, items):
     """Las pruebas e2e (navegador real) van al final y llevan la marca `e2e`.
 

@@ -203,3 +203,42 @@ def test_stop_process_tree_cierra_tambien_los_hijos():
         for child in locals().get("children", []):
             if child.is_running():
                 child.kill()
+
+
+# --- Modelo de OCR al arrancar ----------------------------------------------------------
+
+
+def test_iniciar_descarga_el_modelo_de_ocr_si_falta(fake, monkeypatch, capsys):
+    downloads = []
+    monkeypatch.setattr(iniciar, "model_ready", lambda d: False)
+    monkeypatch.setattr(iniciar, "download_model", lambda d: downloads.append(d))
+    call_command("iniciar")
+    assert len(downloads) == 1
+    assert "Modelo de OCR listo" in capsys.readouterr().out
+
+
+def test_iniciar_no_descarga_si_el_modelo_ya_esta(fake, monkeypatch):
+    monkeypatch.setattr(iniciar, "model_ready", lambda d: True)
+    monkeypatch.setattr(iniciar, "download_model", lambda d: pytest.fail("no debe descargar"))
+    call_command("iniciar")
+
+
+def test_iniciar_sin_internet_avisa_y_sigue(fake, monkeypatch, capsys):
+    from apps.conversion.ocr import OcrUnavailable
+
+    def offline(d):
+        raise OcrUnavailable("No se pudo descargar el modelo de OCR.")
+
+    monkeypatch.setattr(iniciar, "model_ready", lambda d: False)
+    monkeypatch.setattr(iniciar, "download_model", offline)
+    call_command("iniciar")
+    out = capsys.readouterr().out
+    assert "No se pudo descargar el modelo de OCR." in out
+    assert "preparar_ocr" in out
+    assert [c[0] for c in fake["commands"]][-1] == "runserver"  # arranca igual
+
+
+def test_iniciar_con_ocr_desactivado_no_descarga(fake, monkeypatch, settings):
+    settings.OCR_ENABLED = False
+    monkeypatch.setattr(iniciar, "download_model", lambda d: pytest.fail("no debe descargar"))
+    call_command("iniciar")

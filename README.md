@@ -12,7 +12,8 @@ sin nube y sin enviar nada a internet (salvo que configures a propósito un mode
 
 ## Cómo funciona
 1. **Subes** un documento (uno a la vez, hasta 20 MB).
-2. Se **convierte** a Markdown (títulos, listas y tablas incluidos).
+2. Se **convierte** a Markdown (títulos, listas y tablas incluidos). Los **PDF escaneados** se
+   leen con reconocimiento de texto (OCR) en tu propio equipo.
 3. Se **detectan** los datos sensibles en dos capas:
    - **Reglas**: cédulas, NIT, correos, teléfonos, direcciones, fechas de nacimiento, edades,
      números de contrato y de cuenta, empresas con sufijo societario, nombres con contexto
@@ -35,6 +36,8 @@ contrato y cuentas bancarias.
 - Opcional, para la detección con IA: [Ollama](https://ollama.com) y unos 8 GB de RAM libres
   (ver [Modelo de lenguaje](#modelo-de-lenguaje-ollama)).
 - Alrededor de 1 GB de disco para Python y las dependencias (más el modelo de IA si lo usas).
+- Para leer PDF escaneados: conexión a internet **una sola vez** para descargar el modelo de OCR
+  (~8 MB). `iniciar` lo hace solo la primera vez.
 
 ## Instalación
 
@@ -74,7 +77,8 @@ uv run python manage.py iniciar
 ```
 Abre **http://127.0.0.1:8000** en tu navegador. Para salir, pulsa **Ctrl+C** en la terminal.
 
-`iniciar` prepara la base de datos, arranca el procesador en segundo plano y el servidor web.
+`iniciar` prepara la base de datos, descarga el modelo de OCR si falta (solo la primera vez),
+arranca el procesador en segundo plano y el servidor web.
 Si el puerto 8000 está ocupado: `uv run python manage.py iniciar --puerto 8001`.
 
 ## Modelo de lenguaje (Ollama)
@@ -101,6 +105,25 @@ detecta además nombres, empresas y direcciones mencionados de forma libre.
 Tiempos orientativos con `qwen3:8b` en un PC sin GPU dedicada: 25-35 s para un contrato de dos
 páginas. Los documentos grandes se dividen en fragmentos y la página muestra el avance.
 
+## PDF escaneados (OCR)
+Las páginas sin texto (escaneadas o fotografiadas) se leen con
+[RapidOCR](https://github.com/RapidAI/RapidOCR) y su modelo **latino** (español con tildes y ñ).
+Todo ocurre en tu PC: el texto reconocido pasa por el mismo análisis que un PDF normal (títulos,
+párrafos y tablas) y después por la anonimización y la revisión.
+
+- **Modelo**: se descarga una vez a `var/modelos_ocr/` (~8 MB, solo los pesos del modelo; ningún
+  documento sale del equipo) y se verifica con SHA256. Lo hace `iniciar` automáticamente, o:
+  ```bash
+  uv run python manage.py preparar_ocr
+  ```
+  En **Configuración** verás si el OCR está listo.
+- **Tiempo**: unos 4 segundos por página escaneada en CPU. La página de la conversión muestra
+  «Reconociendo texto (OCR): página i de n».
+- **PDF mixtos**: las páginas con texto se leen directamente y solo las escaneadas pasan por OCR.
+- **Avisos**: se indica cuántas páginas se leyeron con OCR, cuáles tienen una confianza de lectura
+  baja (escaneo borroso, torcido o con poco contraste) y cuáles no tenían texto reconocible.
+  **Revisa con más atención** los documentos escaneados: el OCR puede confundir letras o números.
+
 ## Configuración (`.env`)
 | Variable | Por defecto | Qué hace |
 |---|---|---|
@@ -121,6 +144,11 @@ páginas. Los documentos grandes se dividen en fragmentos y la página muestra e
 | `LLM_API_KEY` | vacío | Clave del proveedor (Ollama no la necesita). |
 | `LLM_TIMEOUT` | `120` | Segundos máximos por petición al modelo. |
 | `LLM_REASONING_EFFORT` | `none` | `none` desactiva el razonamiento previo de qwen3 (unas 6 veces más rápido). |
+| `DOCSAFE_USAR_OCR` | `True` | `False` omite las páginas escaneadas (o rechaza el PDF si todas lo son). |
+| `DOCSAFE_OCR_DPI` | `300` | Resolución a la que se lee cada página escaneada. |
+| `DOCSAFE_OCR_MAX_PAGINAS` | `200` | Máximo de páginas escaneadas por documento. |
+| `DOCSAFE_OCR_CONFIANZA_MINIMA` | `0.80` | Por debajo de esta confianza media se avisa de una página dudosa. |
+| `DOCSAFE_OCR_MODELOS` | `var/modelos_ocr` | Carpeta del modelo de OCR. |
 
 Tras cambiar `.env`, reinicia DocSafe (Ctrl+C y `iniciar` de nuevo).
 
@@ -142,7 +170,8 @@ Tras cambiar `.env`, reinicia DocSafe (Ctrl+C y `iniciar` de nuevo).
 **Revisa siempre el resultado antes de compartirlo.** Ninguna detección automática es perfecta.
 
 ## Limitaciones
-- PDF escaneados (imágenes sin texto) no se procesan: no hay reconocimiento óptico (OCR).
+- OCR: no lee texto manuscrito ni corrige páginas giradas 90°; la calidad depende del escaneo.
+  No se aceptan imágenes sueltas (JPG/PNG): conviértelas a PDF.
 - PDF y documentos de Office protegidos con contraseña se rechazan, igual que `.doc`/`.xls`
   antiguos: guárdalos como `.docx`/`.xlsx`.
 - En Word no se incluyen imágenes, cuadros de texto, notas al pie, comentarios ni control de
@@ -160,6 +189,8 @@ Tras cambiar `.env`, reinicia DocSafe (Ctrl+C y `iniciar` de nuevo).
 | «No se pudo conectar… ¿Está Ollama en marcha?» | Abre Ollama (Windows) o ejecuta `ollama serve` (Linux). Comprueba con `ollama list` que el modelo existe. |
 | «Tiempo de espera agotado» con la IA | El modelo tarda en cargar la primera vez. Sube `LLM_TIMEOUT` (p. ej. `300`) o usa un modelo más pequeño. |
 | La primera conversión de PDF tarda más | Normal: se carga el analizador de diseño (~1 s). |
+| «El modelo de OCR no está descargado» | Ejecuta `uv run python manage.py preparar_ocr` (necesita internet solo esa vez). |
+| Un PDF escaneado sale con errores de lectura | Escanea a 300 dpi, recto y con buen contraste. Puedes corregir en la revisión añadiendo lo que se escapó. |
 | «Revisión caducada» | Pasaron más de `DOCSAFE_REVISION_HORAS` sin confirmar; los originales se borraron. Sube el documento de nuevo. |
 
 ## Modo desarrollo
@@ -193,6 +224,7 @@ Solo las de extremo a extremo: `uv run pytest -m e2e`. Todas menos esas: `uv run
 Las pruebas nunca usan tu `.env` ni un modelo de IA real.
 
 ## Licencias
+El OCR usa RapidOCR (Apache-2.0) con modelos PaddleOCR (Apache-2.0).
 La conversión de PDF usa PyMuPDF / pymupdf4llm, con licencia **AGPL-3.0**: válida para uso
 personal; si algún día se distribuye DocSafe, hay que revisar esta condición.
 

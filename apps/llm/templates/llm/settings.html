@@ -44,6 +44,45 @@
   </div>
 </div>
 
+<div class="card shadow-sm mb-3" id="ocr">
+  <div class="card-header d-flex align-items-center justify-content-between">
+    <span>PDF escaneados (OCR)</span>
+    {% if ocr.state == "ready" %}
+      <span class="badge text-bg-success">Listo · local</span>
+    {% elif ocr.state == "disabled" %}
+      <span class="badge text-bg-secondary">Desactivado</span>
+    {% else %}
+      <span class="badge text-bg-warning">Falta el modelo</span>
+    {% endif %}
+  </div>
+  <div class="card-body">
+    <p class="mb-2">
+      Las páginas sin texto (escaneadas o fotografiadas) se leen con RapidOCR y su modelo latino
+      (español con tildes y ñ), <strong>siempre en este equipo</strong>.
+    </p>
+    {% if ocr.state == "missing" %}
+      <div class="alert alert-warning mb-2" role="alert">
+        El modelo de OCR no está descargado, así que los PDF escaneados no se pueden leer.
+        Ejecuta una vez (descarga ~8 MB; ningún documento sale del equipo):
+        <code class="d-block mt-1">{{ ocr.prepare_command }}</code>
+        o simplemente reinicia la aplicación con <code>iniciar</code>.
+      </div>
+    {% elif ocr.state == "disabled" %}
+      <div class="alert alert-secondary mb-2" role="alert">
+        Desactivado con <code>DOCSAFE_USAR_OCR=False</code>: las páginas escaneadas se omiten.
+      </div>
+    {% endif %}
+    <dl class="row mb-0 small">
+      <dt class="col-sm-4">Resolución de lectura</dt>
+      <dd class="col-sm-8">{{ ocr.dpi }} dpi</dd>
+      <dt class="col-sm-4">Máximo por documento</dt>
+      <dd class="col-sm-8">{{ ocr.max_pages }} páginas escaneadas</dd>
+      <dt class="col-sm-4">Aviso de calidad</dt>
+      <dd class="col-sm-8">si la confianza media de una página baja del {{ ocr.min_confidence }} %</dd>
+    </dl>
+  </div>
+</div>
+
 <div class="card shadow-sm">
   <div class="card-header">¿Cómo cambiar la configuración?</div>
   <div class="card-body small">

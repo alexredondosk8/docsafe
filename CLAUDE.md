@@ -8,7 +8,8 @@ Se mantiene actualizado al cerrar cada fase.
 - Se trabaja POR FASES. Al terminar cada fase: detenerse, resumir lo hecho, explicar cómo
   probarlo y ESPERAR la aprobación del usuario antes de continuar.
 - Ante una ambigüedad, preguntar en vez de suponer.
-- Commit en git local al cerrar cada fase. Sin repositorio remoto ni CI/CD en el MVP.
+- Commit en git al cerrar cada fase. Remoto `origin` en GitHub (el usuario lo creó tras el MVP);
+  subir (`git push`) solo cuando el usuario lo pida. Sin CI/CD por ahora.
 - Antes de cerrar una fase: `uv run ruff check .`, `uv run ruff format --check .` y
   `uv run pytest` deben pasar.
 
@@ -265,6 +266,43 @@ confirmar, al descartar o a las 24 h); si la IA falla, **se sigue solo con regla
   rechazado, Ctrl+C sin procesos restantes, 447 pruebas (e2e omitidas sin Chromium).
   En Linux `qcluster` usa fork: los hijos tienen `manage.py qcluster` en la línea de órdenes.
 
+### PDF escaneados con OCR (Fase 8)
+Decisiones del usuario: motor **RapidOCR con modelo latino**, **solo PDF** (no imágenes sueltas).
+Evaluación sobre el contrato de ejemplo escaneado: RapidOCR por defecto (chino/inglés) pierde
+tildes y ñ («Maria Lopez», «39 anos») y une palabras; el modelo **latino PP-OCRv5** las conserva.
+Tesseract exigiría instalar un programa aparte; un modelo de visión en Ollama (~6 GB) es lento y
+puede inventar texto. Integrado en pymupdf4llm como `ocr_function`, el resultado es casi idéntico
+al de un PDF con texto (títulos, párrafos, listas y la tabla del anexo). ~4 s/página en CPU (300 dpi).
+- `apps/conversion/ocr.py` (Python puro): `OcrOptions` (enabled, models_dir, dpi=300, max_pages=200,
+  min_confidence=0.80), `OcrEngine` (RapidOCR con `Rec.model_path` local ⇒ **nunca descarga en
+  ejecución**; detección/orientación vienen en el paquete), `get_engine` (cacheado por proceso),
+  `OcrRun`/`PageStats` (líneas y confianza media por página, sin texto).
+- Modelo `latin_PP-OCRv5_rec_mobile.onnx` (~8 MB, incluye su diccionario) en `var/modelos_ocr/`;
+  `download_model` lo baja de ModelScope (RapidOCR v3.10.0) a un `.part`, verifica **SHA256** y lo
+  renombra. `model_ready` verifica el hash (cacheado por ruta+mtime+tamaño).
+- `pdf_converter`: páginas con ≥ 10 caracteres de texto se leen directo; si hay escaneadas y el OCR
+  está disponible, `to_markdown(use_ocr=True, ocr_function=...)` sobre todas las páginas (la librería
+  decide qué páginas necesitan OCR). Avisos: páginas leídas con OCR, confianza baja (< 80 %),
+  páginas escaneadas sin texto reconocible (la librería ni siquiera lee una página que es solo un
+  recuadro). Sin OCR (desactivado/modelo ausente): se omiten las escaneadas con aviso, o error con
+  el motivo y `preparar_ocr` si todas lo son. Más de `max_pages` escaneadas ⇒ error.
+- `convert(path, type, ocr=OcrOptions, on_progress=)`; `ConversionResult.ocr_pages`.
+  `pipeline.ocr_options()` desde settings; progreso 10→40 % «Reconociendo texto (OCR): página i de n».
+- `manage.py preparar_ocr`; `iniciar` descarga el modelo si falta (sin internet: avisa y arranca).
+- `.env`: `DOCSAFE_USAR_OCR`, `DOCSAFE_OCR_DPI`, `DOCSAFE_OCR_MAX_PAGINAS`,
+  `DOCSAFE_OCR_CONFIANZA_MINIMA`, `DOCSAFE_OCR_MODELOS`. Configuración muestra el estado del OCR
+  (listo / falta el modelo / desactivado) sin rutas de disco.
+- Pruebas: `tests/conftest.py` **bloquea urlopen** en todas las pruebas (ninguna descarga). OCR
+  simulado (`FakeEngine` con la integración real) y OCR real con `var/modelos_ocr` (se omiten si no
+  está). Fixtures `contrato_escaneado.pdf` (contrato rasterizado en grises) y `mixto_ocr.pdf`
+  (página 1 texto, página 2 escaneada). El contrato escaneado anonimizado: sin fugas.
+- Limitaciones: manuscritos, páginas giradas 90°, imágenes sueltas (JPG/PNG).
+- Verificado con `iniciar` real (OCR + IA qwen3:8b): el contrato escaneado llega a revisión con
+  12 entidades, variantes del anexo unidas a su nombre completo, sin fugas; progreso por página
+  visible; tarjeta de OCR en Configuración. 493 pruebas pasan (2 min 18 s con las e2e).
+- Antes de esta fase se corrigió un commit de unión con GitHub (5832854) que dejó marcadores de
+  conflicto en `.gitignore` y `README.md` (commit b374bad, subido). Remoto: `origin` en GitHub.
+
 ## Arquitectura (carpetas)
 ```
 config/              Proyecto Django (settings, settings_test, urls, wsgi, asgi)
@@ -281,7 +319,8 @@ tests/               unit/, integration/, e2e/, fixtures/
 ## Comandos
 ```
 uv sync                                   # instalar dependencias
-uv run python manage.py iniciar           # uso normal: migra + worker + servidor (127.0.0.1:8000)
+uv run python manage.py iniciar           # uso normal: migra + modelo OCR + worker + servidor (127.0.0.1:8000)
+uv run python manage.py preparar_ocr      # descarga y verifica el modelo de OCR (una vez)
 uv run python manage.py runserver 127.0.0.1:8000   # desarrollo, junto con:
 uv run python manage.py qcluster                   # procesador en segundo plano
 uv run pytest                             # pruebas (e2e al final; -m e2e / -m "not e2e")
@@ -298,6 +337,7 @@ uv run ruff check . ; uv run ruff format .
 5. Cliente LLM, página de Configuración, probar conexión, aviso de privacidad. ✅
 6. Anonimización con LLM, fragmentación, etiquetas consistentes, pantalla de revisión. ✅
 7. Endurecimiento, pruebas de extremo a extremo, README completo (Windows/Linux + Ollama). ✅
+8. PDF escaneados: OCR local con RapidOCR (modelo latino), avisos de calidad. ✅
 
 ## Preguntas abiertas
 - (Resuelta en Fase 6) Revisión: desmarcar y añadir; originales temporales hasta confirmar (24 h).

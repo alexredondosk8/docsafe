@@ -66,7 +66,10 @@ def test_pdf_protegido_da_error(fixture_path):
 def test_pdf_mixto_omite_paginas_sin_texto_con_aviso(fixture_path):
     result = convert(fixture_path("mixto.pdf"), "pdf")
     assert "Página con texto del contrato." in result.markdown
-    assert result.warnings == ["Se omitieron 1 de 2 páginas sin texto (posiblemente escaneadas)."]
+    assert result.warnings == [
+        "Se omitieron 1 de 2 páginas escaneadas porque el reconocimiento de texto (OCR) "
+        "está desactivado (DOCSAFE_USAR_OCR=False)."
+    ]
 
 
 def test_pdf_danado_da_error(tmp_path):

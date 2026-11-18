@@ -28,7 +28,7 @@ from apps.anonymization import (
     apply_review,
     build_review,
 )
-from apps.conversion import ConversionError, convert
+from apps.conversion import ConversionError, OcrOptions, convert
 from apps.llm.client import LLMConfig, get_provider
 
 from .models import Conversion
@@ -88,8 +88,23 @@ def process(conversion_id) -> None:
             progress_message="Convirtiendo a Markdown",
             error_message="",
         )
-        result = convert(path, conversion.file_type)
+
+        def on_ocr_progress(done: int, total: int) -> None:
+            # OCR de páginas escaneadas: 10 % → 40 % del progreso total.
+            _update(
+                pk,
+                progress=10 + 30 * done // max(total, 1),
+                progress_message=(
+                    f"Reconociendo texto (OCR): página {min(done + 1, total)} de {total}"
+                    if done < total
+                    else "Analizando la estructura del documento"
+                ),
+            )
+
+        result = convert(path, conversion.file_type, ocr=ocr_options(), on_progress=on_ocr_progress)
         text, warnings = result.markdown, list(result.warnings)
+        if result.ocr_pages:
+            logger.info("Conversión %s: %d páginas leídas con OCR", pk, result.ocr_pages)
         del result
 
         _update(
@@ -122,6 +137,17 @@ def process(conversion_id) -> None:
     finally:
         conversion.delete_upload()
         Conversion.objects.filter(pk=pk).update(upload="")
+
+
+def ocr_options() -> OcrOptions:
+    """Opciones de OCR para PDF escaneados, según la configuración (.env)."""
+    return OcrOptions(
+        enabled=settings.OCR_ENABLED,
+        models_dir=settings.OCR_MODELS_DIR,
+        dpi=settings.OCR_DPI,
+        max_pages=settings.OCR_MAX_PAGES,
+        min_confidence=settings.OCR_MIN_CONFIDENCE,
+    )
 
 
 def analyze(text: str, pk=None) -> tuple[ReviewData, str, list[str]]:

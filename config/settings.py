@@ -212,6 +212,15 @@ LLM_CHUNK_CHARS = env.int("DOCSAFE_IA_TAMANO_FRAGMENTO", default=2500)
 # Horas que se guardan los datos originales esperando la revisión del usuario.
 REVIEW_EXPIRY_HOURS = env.int("DOCSAFE_REVISION_HORAS", default=24)
 
+# --- OCR para PDF escaneados (Fase 8) ---------------------------------------------------
+# RapidOCR local con el modelo latino (se descarga una vez a OCR_MODELS_DIR, ~8 MB).
+OCR_ENABLED = env.bool("DOCSAFE_USAR_OCR", default=True)
+OCR_MODELS_DIR = Path(env("DOCSAFE_OCR_MODELOS", default=str(VAR_DIR / "modelos_ocr")))
+OCR_DPI = env.int("DOCSAFE_OCR_DPI", default=300)
+OCR_MAX_PAGES = env.int("DOCSAFE_OCR_MAX_PAGINAS", default=200)
+# Confianza media (0-1) bajo la cual se avisa de que una página se leyó con dudas.
+OCR_MIN_CONFIDENCE = env.float("DOCSAFE_OCR_CONFIANZA_MINIMA", default=0.80)
+
 # --- Registro (logs) --------------------------------------------------------------------
 # Regla: NUNCA registrar contenido de documentos ni datos personales.
 LOGGING = {

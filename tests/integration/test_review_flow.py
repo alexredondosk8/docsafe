@@ -137,7 +137,9 @@ def test_progreso_muestra_fragmentos(fake_ai, settings, monkeypatch):
 
     monkeypatch.setattr(pipeline, "_update", spy)
     monkeypatch.setattr(
-        pipeline, "convert", lambda *a: ConversionResult(markdown="\n\n".join(["Texto. " * 60] * 3))
+        pipeline,
+        "convert",
+        lambda *a, **k: ConversionResult(markdown="\n\n".join(["Texto. " * 60] * 3)),
     )
     settings.LLM_CHUNK_CHARS = 500
     conversion = Conversion(original_filename="a.docx", file_type="docx", size_bytes=1)
@@ -329,7 +331,7 @@ def test_mantenimiento_programado_en_django_q():
 
 def test_conversion_en_revision_no_se_reprocesa(analyze, fake_ai, monkeypatch):
     conversion = analyze()
-    monkeypatch.setattr(pipeline, "convert", lambda *a: pytest.fail("no debe convertir"))
+    monkeypatch.setattr(pipeline, "convert", lambda *a, **k: pytest.fail("no debe convertir"))
     pipeline.process(conversion.id)
     conversion.refresh_from_db()
     assert conversion.status == Conversion.Status.REVIEW
